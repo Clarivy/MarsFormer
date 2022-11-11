@@ -12,7 +12,9 @@ import torch.nn.functional as F
 from data_loader import get_dataloaders
 from faceformer import Faceformer
 
-def trainer(args, train_loader, dev_loader, model, optimizer, criterion, epoch=100):
+from tensorboardX import SummaryWriter
+
+def trainer(args, train_loader, dev_loader, model, optimizer, criterion, writer:SummaryWriter,epoch=100):
     save_path = os.path.join(args.dataset,args.save_path)
     if os.path.exists(save_path):
         shutil.rmtree(save_path)
@@ -52,17 +54,21 @@ def trainer(args, train_loader, dev_loader, model, optimizer, criterion, epoch=1
                 one_hot = one_hot_all[:,iter,:]
                 loss = model(audio, template,  vertice, one_hot, criterion)
                 valid_loss_log.append(loss.item())
+                writer.add_scalar("loss/train", loss.item(), global_step=iteration)
             else:
                 for iter in range(one_hot_all.shape[-1]):
                     condition_subject = train_subjects_list[iter]
                     one_hot = one_hot_all[:,iter,:]
                     loss = model(audio, template,  vertice, one_hot, criterion)
                     valid_loss_log.append(loss.item())
+                    writer.add_scalar("loss/val", loss.item(), global_step=iteration)
                         
         current_loss = np.mean(valid_loss_log)
+        writer.add_scalar("loss/average", current_loss, global_step=e)
         
-        if (e > 0 and e % 25 == 0) or e == args.max_epoch:
+        if (e > 0 and e % 5 == 0) or e == args.max_epoch:
             torch.save(model.state_dict(), os.path.join(save_path,'{}_model.pth'.format(e)))
+            print("Saved model at epcoh: {}".format(e+1))
 
         print("epcoh: {}, current loss:{:.7f}".format(e+1,current_loss))    
     return model
@@ -126,11 +132,34 @@ def main():
        " FaceTalk_170908_03277_TA")
     parser.add_argument("--test_subjects", type=str, default="FaceTalk_170809_00138_TA"
        " FaceTalk_170731_00024_TA")
+    parser.add_argument("--load_model", type=str, default="", help='path of pretrained model')
+    parser.add_argument("--base_model_path", type=str, required=False, help='path of base model')
+    parser.add_argument("--base_template", type=str, required=False, help='path of base model template')
+    parser.add_argument("--logdir", type=str, default="checkpoints",required=False, help='path of tensorboard logger')
+    parser.add_argument("--name", type=str,required=True, help='name of tensorboard')
     args = parser.parse_args()
+
+    # Tensorboard logger
+    logdir = os.path.join(args.logdir, args.name)
+    if os.path.exists(logdir):
+        print("logdir exists, remove it? [Y/n]")
+        while True:
+            ans = input().strip().lower()
+            if ans == "y":
+                shutil.rmtree(logdir)
+                break
+            elif ans == "n":
+                exit()
+    os.makedirs(logdir)
+    writer = SummaryWriter(log_dir=logdir)
+
 
     #build model
     model = Faceformer(args)
     print("model parameters: ", count_parameters(model))
+
+    if args.load_model != "":
+        model.load_state_dict(torch.load(args.load_model)) 
 
     # to cuda
     assert torch.cuda.is_available()
@@ -138,12 +167,13 @@ def main():
     
     #load data
     dataset = get_dataloaders(args)
+
     # loss
     criterion = nn.MSELoss()
 
     # Train the model
     optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad,model.parameters()), lr=args.lr)
-    model = trainer(args, dataset["train"], dataset["valid"],model, optimizer, criterion, epoch=args.max_epoch)
+    model = trainer(args, dataset["train"], dataset["valid"],model, optimizer, criterion, writer, epoch=args.max_epoch)
     
     test(args, model, dataset["test"], epoch=args.max_epoch)
     

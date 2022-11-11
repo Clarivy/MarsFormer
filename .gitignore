@@ -129,3 +129,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# data files
+vocaset/
+demo/
+data/
+vis/

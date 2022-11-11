@@ -5,6 +5,7 @@ import numpy as np
 import copy
 import math
 from wav2vec import Wav2Vec2Model
+from data_loader import load_base_model, load_vertices
 
 # Temporal Bias, inspired by ALiBi: https://github.com/ofirpress/attention_with_linear_biases
 def init_biased_mask(n_head, max_seq_len, period):
@@ -41,6 +42,11 @@ def enc_dec_mask(device, dataset, T, S):
             mask[i, i] = 0
     return (mask==1).to(device=device)
 
+def get_base_dec_func(base_models):
+    def transformer(base_vec):
+        return torch.matmul(base_vec, base_models)
+    return transformer
+
 # Periodic Positional Encoding
 class PeriodicPositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, period=25, max_seq_len=600):
@@ -67,6 +73,8 @@ class Faceformer(nn.Module):
         template: (batch_size, V*3)
         vertice: (batch_size, seq_len, V*3)
         """
+        self.base_models = None
+
         self.dataset = args.dataset
         self.audio_encoder = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
         # wav2vec 2.0 weights initialization
@@ -82,11 +90,24 @@ class Faceformer(nn.Module):
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=1)
         # motion decoder
         self.vertice_map_r = nn.Linear(args.feature_dim, args.vertice_dim)
+        
         # style embedding
         self.obj_vector = nn.Linear(len(args.train_subjects.split()), args.feature_dim, bias=False)
         self.device = args.device
+
+
+        # base 
+        if args.base_model_path is not None:
+            self.base_template = torch.tensor(load_vertices(args.base_template, scale=1./100), dtype=torch.float)
+            self.base_models = torch.tensor(load_base_model(args.base_model_path, scale=1./100), dtype=torch.float) - self.base_template
+            self.base_models = self.base_models.reshape(self.base_models.size(0), -1)
+            self.device_base_models = self.base_models.clone().to(self.device)
+            self.base_map_r = nn.Linear(args.feature_dim, self.base_models.shape[0])
+        
+        # TODO: Wether initialize the base_map_r
         nn.init.constant_(self.vertice_map_r.weight, 0)
         nn.init.constant_(self.vertice_map_r.bias, 0)
+
 
     def forward(self, audio, template, vertice, one_hot, criterion,teacher_forcing=True):
         # tgt_mask: :math:`(T, T)`.
@@ -112,7 +133,12 @@ class Faceformer(nn.Module):
             tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().to(device=self.device)
             memory_mask = enc_dec_mask(self.device, self.dataset, vertice_input.shape[1], hidden_states.shape[1])
             vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
-            vertice_out = self.vertice_map_r(vertice_out)
+            if self.base_models is not None:
+                vertice_out = self.base_map_r(vertice_out)
+                # print("Matmuling |", vertice_out.shape, self.base_models.shape)
+                vertice_out = vertice_out @ self.device_base_models
+            else:
+                vertice_out = self.vertice_map_r(vertice_out)
         else:
             for i in range(frame_num):
                 if i==0:
@@ -124,13 +150,23 @@ class Faceformer(nn.Module):
                 tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().to(device=self.device)
                 memory_mask = enc_dec_mask(self.device, self.dataset, vertice_input.shape[1], hidden_states.shape[1])
                 vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
-                vertice_out = self.vertice_map_r(vertice_out)
+                if self.base_models is not None:
+                    vertice_out = self.base_map_r(vertice_out)
+                    # print("Matmuling |", vertice_out.shape, self.base_models.shape)
+                    vertice_out = vertice_out @ self.device_base_models
+                else:
+                    vertice_out = self.vertice_map_r(vertice_out)
+                
                 new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
                 new_output = new_output + style_emb
                 vertice_emb = torch.cat((vertice_emb, new_output), 1)
 
         vertice_out = vertice_out + template
-        loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
+        # print(vertice_out.shape) # 1 * n * 15069
+        if self.base_models is not None:
+            loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
+        else:
+            loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
         loss = torch.mean(loss)
         return loss
 
@@ -144,6 +180,7 @@ class Faceformer(nn.Module):
             frame_num = hidden_states.shape[1]
         hidden_states = self.audio_feature_map(hidden_states)
 
+        output_frame = []
         for i in range(frame_num):
             if i==0:
                 vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
@@ -155,10 +192,26 @@ class Faceformer(nn.Module):
             tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().to(device=self.device)
             memory_mask = enc_dec_mask(self.device, self.dataset, vertice_input.shape[1], hidden_states.shape[1])
             vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
-            vertice_out = self.vertice_map_r(vertice_out)
+            if self.base_models is not None:
+                vertice_out = self.base_map_r(vertice_out)
+                # print("Matmuling |", vertice_out.shape, self.base_models.shape)
+                vertice_out = vertice_out @ self.device_base_models
+            else:
+                vertice_out = self.vertice_map_r(vertice_out)
+            # if i == 0:
+            #     output_frame = vertice_out
+            # else:
+            #     print(vertice_out.shape, vertice_out[:,-1:,:].shape)
+            #     print(output_frame.shape)
+            #     output_frame = torch.cat((output_frame, vertice_out[:,-1:,:]), 1)
             new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
             new_output = new_output + style_emb
             vertice_emb = torch.cat((vertice_emb, new_output), 1)
+            # print(vertice_emb.shape)
+            # if vertice_emb.size(1) > 600:
+            #     start = vertice_emb.size(1) - 600
+            #     vertice_emb = vertice_emb[:, start :, :]
 
+        # output_frame = output_frame + template
         vertice_out = vertice_out + template
         return vertice_out

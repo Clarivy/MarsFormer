@@ -84,6 +84,9 @@ def read_data(args):
     for k, v in data.items():
         subject_id = "_".join(k.split("_")[:-1])
         sentence_id = int(k.split(".")[0][-2:])
+        if args.base_model_path is not None:
+            v['vertice'] = v['vertice'][:,:3931*3]
+            v['template'] = v['template'][:3931*3]
         if subject_id in subjects_dict["train"] and sentence_id in splits[args.dataset]['train']:
             train_data.append(v)
         if subject_id in subjects_dict["val"] and sentence_id in splits[args.dataset]['val']:

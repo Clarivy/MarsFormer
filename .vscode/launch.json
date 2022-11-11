@@ -1,0 +1,58 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Outside of my code",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Python: Debug train",
+            "type": "python",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--dataset",
+                "vocaset",
+                "--vertice_dim",
+                "11793",
+                "--feature_dim",
+                "64",
+                "--base_model_path",
+                "./data/FLAME",
+                "--base_template",
+                "./data/000_generic_neutral_mesh.obj"
+            ]
+        },
+        {
+            "name": "Python: Debug Demo",
+            "type": "python",
+            "request": "launch",
+            "program": "demo.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--model_name", "vocaset",
+                "--wav_path", "demo/wav/trim2.wav",
+                "--dataset", "vocaset",
+                "--vertice_dim", "11793",
+                "--feature_dim", "64",
+                "--period", "30",
+                "--fps", "30",
+                "--base_model_path", "./data/FLAME",
+                "--base_template", "./data/000_generic_neutral_mesh.obj",
+                "--condition", "FaceTalk_170913_03279_TA",
+                "--subject", "FaceTalk_170809_00138_TA",
+                "--model_path", "./vocaset/save/15_model.pth"
+            ]
+        }
+    ]
+}

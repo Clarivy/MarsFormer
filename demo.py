@@ -5,6 +5,7 @@ import os,sys,shutil,argparse,copy,pickle
 import math,scipy
 from faceformer import Faceformer
 from transformers import Wav2Vec2FeatureExtractor,Wav2Vec2Processor
+from data_loader import load_vertices
 
 import torch
 import torch.nn as nn
@@ -25,7 +26,10 @@ def test_model(args):
 
     #build model
     model = Faceformer(args)
-    model.load_state_dict(torch.load(os.path.join(args.dataset, '{}.pth'.format(args.model_name))))
+    model.load_state_dict(torch.load(args.model_path))
+    from faceformer import PeriodicPositionalEncoding, init_biased_mask
+    model.PPE = PeriodicPositionalEncoding(args.feature_dim, period = args.period, max_seq_len=6000)
+    model.biased_mask = init_biased_mask(n_head = 4, max_seq_len = 6000, period=args.period)
     model = model.to(torch.device(args.device))
     model.eval()
 
@@ -41,7 +45,10 @@ def test_model(args):
     one_hot = np.reshape(one_hot,(-1,one_hot.shape[0]))
     one_hot = torch.FloatTensor(one_hot).to(device=args.device)
 
-    temp = templates[args.subject]
+    if args.base_model_path is not None:
+        temp = load_vertices(args.base_template, scale=1/100)
+    else:
+        temp = templates[args.subject]
              
     template = temp.reshape((-1))
     template = np.reshape(template,(-1,template.shape[0]))
@@ -145,7 +152,10 @@ def render_sequence(args):
     if args.dataset == "BIWI":
         template_file = os.path.join(args.dataset, args.render_template_path, "BIWI.ply")
     elif args.dataset == "vocaset":
-        template_file = os.path.join(args.dataset, args.render_template_path, "FLAME_sample.ply")
+        if args.base_model_path is not None:
+            template_file = args.base_template
+        else:
+            template_file = os.path.join(args.dataset, args.render_template_path, "FLAME_sample.ply")
          
     print("rendering: ", test_name)
                  
@@ -186,8 +196,12 @@ def main():
     parser.add_argument("--period", type=int, default=25, help='period in PPE - 30 for vocaset; 25 for BIWI')
     parser.add_argument("--vertice_dim", type=int, default=23370*3, help='number of vertices - 5023*3 for vocaset; 23370*3 for BIWI')
     parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--train_subjects", type=str, default="F2 F3 F4 M3 M4 M5")
-    parser.add_argument("--test_subjects", type=str, default="F1 F5 F6 F7 F8 M1 M2 M6")
+    parser.add_argument("--train_subjects", type=str, default="FaceTalk_170728_03272_TA"
+       " FaceTalk_170904_00128_TA FaceTalk_170725_00137_TA FaceTalk_170915_00223_TA"
+       " FaceTalk_170811_03274_TA FaceTalk_170913_03279_TA"
+       " FaceTalk_170904_03276_TA FaceTalk_170912_03278_TA")
+    parser.add_argument("--test_subjects", type=str, default="FaceTalk_170809_00138_TA"
+       " FaceTalk_170731_00024_TA")
     parser.add_argument("--output_path", type=str, default="demo/output", help='path of the rendered video sequence')
     parser.add_argument("--wav_path", type=str, default="demo/wav/test.wav", help='path of the input audio signal')
     parser.add_argument("--result_path", type=str, default="demo/result", help='path of the predictions')
@@ -196,6 +210,9 @@ def main():
     parser.add_argument("--background_black", type=bool, default=True, help='whether to use black background')
     parser.add_argument("--template_path", type=str, default="templates.pkl", help='path of the personalized templates')
     parser.add_argument("--render_template_path", type=str, default="templates", help='path of the mesh in BIWI/FLAME topology')
+    parser.add_argument("--base_model_path", type=str, required=False, help='path of base model')
+    parser.add_argument("--base_template", type=str, required=False, help='path of base model template')
+    parser.add_argument("--model_path", type=str, required=True, help='path of base pth path')
     args = parser.parse_args()   
 
     test_model(args)

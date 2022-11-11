@@ -8,6 +8,7 @@ import pickle
 from tqdm import tqdm
 import random,math
 from transformers import Wav2Vec2FeatureExtractor,Wav2Vec2Processor
+from psbody.mesh import Mesh
 import librosa    
 
 class Dataset(data.Dataset):
@@ -103,6 +104,20 @@ def get_dataloaders(args):
     test_data = Dataset(test_data,subjects_dict,"test")
     dataset["test"] = data.DataLoader(dataset=test_data, batch_size=1, shuffle=False)
     return dataset
+
+def load_vertices(path, scale = 1):
+    return Mesh(filename=path).v * scale
+
+def load_base_model(path, scale = 1):
+    import glob
+
+    if path == "":
+        return None
+
+    meshes = []
+    for filename in glob.glob(os.path.join(path, "*.obj")):
+        meshes.append(load_vertices(filename, scale=scale))
+    return meshes
 
 if __name__ == "__main__":
     get_dataloaders()

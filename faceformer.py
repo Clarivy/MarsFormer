@@ -94,6 +94,9 @@ class Faceformer(nn.Module):
         # style embedding
         self.obj_vector = nn.Linear(len(args.train_subjects.split()), args.feature_dim, bias=False)
         self.device = args.device
+        
+        self.activation_func = nn.LeakyReLU()
+        # self.activation_func = nn.Tanh()
 
 
         # base 
@@ -122,6 +125,8 @@ class Faceformer(nn.Module):
                 frame_num = hidden_states.shape[1]//2
         hidden_states = self.audio_feature_map(hidden_states)
 
+        negative_penalty = torch.tensor(0., device=self.device)
+
         if teacher_forcing:
             vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
             style_emb = vertice_emb  
@@ -135,6 +140,8 @@ class Faceformer(nn.Module):
             vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
             if self.base_models is not None:
                 vertice_out = self.base_map_r(vertice_out)
+                vertice_out = self.activation_func(vertice_out)
+                negative_penalty = negative_penalty + torch.sum(vertice_out[vertice_out<0])
                 # print("Matmuling |", vertice_out.shape, self.base_models.shape)
                 vertice_out = vertice_out @ self.device_base_models
             else:
@@ -152,6 +159,8 @@ class Faceformer(nn.Module):
                 vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
                 if self.base_models is not None:
                     vertice_out = self.base_map_r(vertice_out)
+                    vertice_out = self.activation_func(vertice_out)
+                    negative_penalty = negative_penalty + torch.sum(vertice_out[vertice_out<0])
                     # print("Matmuling |", vertice_out.shape, self.base_models.shape)
                     vertice_out = vertice_out @ self.device_base_models
                 else:
@@ -164,7 +173,8 @@ class Faceformer(nn.Module):
         vertice_out = vertice_out + template
         # print(vertice_out.shape) # 1 * n * 15069
         if self.base_models is not None:
-            loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
+            # vertice_out is (batch, seq_len, V*3) 
+            loss = criterion(vertice_out, vertice) - negative_penalty # penalty for negative base
         else:
             loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
         loss = torch.mean(loss)
@@ -194,6 +204,8 @@ class Faceformer(nn.Module):
             vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
             if self.base_models is not None:
                 vertice_out = self.base_map_r(vertice_out)
+                vertice_out = self.activation_func(vertice_out)
+                vertice_out = vertice_out.clip(0, 1)
                 # print("Matmuling |", vertice_out.shape, self.base_models.shape)
                 vertice_out = vertice_out @ self.device_base_models
             else:

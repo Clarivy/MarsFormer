@@ -15,9 +15,9 @@ from faceformer import Faceformer
 from tensorboardX import SummaryWriter
 
 def trainer(args, train_loader, dev_loader, model, optimizer, criterion, writer:SummaryWriter,epoch=100):
-    save_path = os.path.join(args.dataset,args.save_path)
+    save_path = os.path.join(args.logdir, "save", args.name)
     if os.path.exists(save_path):
-        shutil.rmtree(save_path)
+        os.rmdir(save_path)
     os.makedirs(save_path)
 
     train_subjects_list = [i for i in args.train_subjects.split(" ")]
@@ -77,10 +77,10 @@ def trainer(args, train_loader, dev_loader, model, optimizer, criterion, writer:
 def test(args, model, test_loader,epoch):
     result_path = os.path.join(args.dataset,args.result_path)
     if os.path.exists(result_path):
-        shutil.rmtree(result_path)
+        os.rmdir(result_path)
     os.makedirs(result_path)
 
-    save_path = os.path.join(args.dataset,args.save_path)
+    save_path = os.path.join(args.logdir, "save", args.name)
     train_subjects_list = [i for i in args.train_subjects.split(" ")]
 
     model.load_state_dict(torch.load(os.path.join(save_path, '{}_model.pth'.format(epoch))))
@@ -122,7 +122,6 @@ def main():
     parser.add_argument("--max_epoch", type=int, default=100, help='number of epochs')
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--template_file", type=str, default="templates.pkl", help='path of the personalized templates')
-    parser.add_argument("--save_path", type=str, default="save", help='path of the trained models')
     parser.add_argument("--result_path", type=str, default="result", help='path to the predictions')
     parser.add_argument("--train_subjects", type=str, default="FaceTalk_170728_03272_TA"
        " FaceTalk_170904_00128_TA FaceTalk_170725_00137_TA FaceTalk_170915_00223_TA"
@@ -140,7 +139,8 @@ def main():
     args = parser.parse_args()
 
     # Tensorboard logger
-    logdir = os.path.join(args.logdir, args.name)
+    logdir = os.path.join(args.logdir, "web", args.name)
+
     if os.path.exists(logdir):
         print("logdir exists, remove it? [Y/n]")
         while True:

@@ -139,8 +139,9 @@ def render_mesh_helper(args,mesh, t_center, rot=np.zeros(3), tex_img=None, z_off
     try:
         r = pyrender.OffscreenRenderer(viewport_width=frustum['width'], viewport_height=frustum['height'])
         color, _ = r.render(scene, flags=flags)
-    except:
+    except Exception as e:
         print('pyrender: Failed rendering frame')
+        print(e)
         color = np.zeros((frustum['height'], frustum['width'], 3), dtype='uint8')
 
     return color[..., ::-1]

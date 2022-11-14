@@ -214,6 +214,7 @@ def main():
     parser.add_argument("--base_model_path", type=str, required=False, help='path of base model')
     parser.add_argument("--base_template", type=str, required=False, help='path of base model template')
     parser.add_argument("--model_path", type=str, required=True, help='path of base pth path')
+    parser.add_argument("--neg_penalty", type=float,required=False, default=1e-7, help='penalty for negative value in the base vector')
     args = parser.parse_args()   
 
     test_model(args)

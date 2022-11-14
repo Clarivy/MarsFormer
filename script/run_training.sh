@@ -5,4 +5,5 @@ python main.py \
 --feature_dim 64 \
 --base_model_path ./data/FLAME \
 --base_template ./data/000_generic_neutral_mesh.obj \
---name fix1\
+--name leakyrelu_smallslope1e7 \
+--max_epoch 200

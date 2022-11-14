@@ -95,9 +95,6 @@ class Faceformer(nn.Module):
         self.obj_vector = nn.Linear(len(args.train_subjects.split()), args.feature_dim, bias=False)
         self.device = args.device
         
-        self.activation_func = nn.LeakyReLU()
-        # self.activation_func = nn.Tanh()
-
 
         # base 
         if args.base_model_path is not None:
@@ -106,6 +103,9 @@ class Faceformer(nn.Module):
             self.base_models = self.base_models.reshape(self.base_models.size(0), -1)
             self.device_base_models = self.base_models.clone().to(self.device)
             self.base_map_r = nn.Linear(args.feature_dim, self.base_models.shape[0])
+            self.activation_func = nn.LeakyReLU(negative_slope=args.neg_penalty)
+            # self.activation_func = nn.Tanh()
+
         
         # TODO: Wether initialize the base_map_r
         nn.init.constant_(self.vertice_map_r.weight, 0)

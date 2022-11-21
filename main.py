@@ -33,7 +33,7 @@ def trainer(args, train_loader, dev_loader, model, optimizer, criterion, writer:
             iteration += 1
             # to gpu
             audio, vertice, template, one_hot  = audio.to(device="cuda"), vertice.to(device="cuda"), template.to(device="cuda"), one_hot.to(device="cuda")
-            loss = model(audio, template,  vertice, one_hot, criterion,teacher_forcing=False)
+            loss = model(audio, template,  vertice, one_hot, criterion, writer=writer, global_step = iteration,teacher_forcing=False)
             loss.backward()
             loss_log.append(loss.item())
             if i % args.gradient_accumulation_steps==0:
@@ -54,14 +54,13 @@ def trainer(args, train_loader, dev_loader, model, optimizer, criterion, writer:
                 one_hot = one_hot_all[:,iter,:]
                 loss = model(audio, template,  vertice, one_hot, criterion)
                 valid_loss_log.append(loss.item())
-                writer.add_scalar("loss/train", loss.item(), global_step=iteration)
             else:
                 for iter in range(one_hot_all.shape[-1]):
                     condition_subject = train_subjects_list[iter]
                     one_hot = one_hot_all[:,iter,:]
                     loss = model(audio, template,  vertice, one_hot, criterion)
                     valid_loss_log.append(loss.item())
-                    writer.add_scalar("loss/val", loss.item(), global_step=iteration)
+                    # writer.add_scalar("loss/val", loss.item(), global_step=iteration)
                         
         current_loss = np.mean(valid_loss_log)
         writer.add_scalar("loss/average", current_loss, global_step=e)

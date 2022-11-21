@@ -112,7 +112,7 @@ class Faceformer(nn.Module):
         nn.init.constant_(self.vertice_map_r.bias, 0)
 
 
-    def forward(self, audio, template, vertice, one_hot, criterion,teacher_forcing=True):
+    def forward(self, audio, template, vertice, one_hot, criterion, writer = None, global_step=None,teacher_forcing=True):
         # tgt_mask: :math:`(T, T)`.
         # memory_mask: :math:`(T, S)`.
         template = template.unsqueeze(1) # (1,1, V*3)
@@ -174,10 +174,13 @@ class Faceformer(nn.Module):
         # print(vertice_out.shape) # 1 * n * 15069
         if self.base_models is not None:
             # vertice_out is (batch, seq_len, V*3) 
-            loss = criterion(vertice_out, vertice) - negative_penalty # penalty for negative base
+            loss = criterion(vertice_out, vertice) # penalty for negative base
         else:
             loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
-        loss = torch.mean(loss)
+        if writer is not None:
+            writer.add_scalar("loss/deviation", torch.mean(loss).item(), global_step=global_step)
+            writer.add_scalar("loss/negative_penalty", negative_penalty.item(), global_step=global_step)
+        loss = torch.mean(loss) - negative_penalty
         return loss
 
     def predict(self, audio, template, one_hot):

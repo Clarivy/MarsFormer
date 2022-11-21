@@ -57,7 +57,7 @@ def test_model(args):
     wav_path = args.wav_path
     test_name = os.path.basename(wav_path).split(".")[0]
     speech_array, sampling_rate = librosa.load(os.path.join(wav_path), sr=16000)
-    processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+    processor = Wav2Vec2Processor.from_pretrained("./facebook/wav2vec_processor")
     audio_feature = np.squeeze(processor(speech_array,sampling_rate=16000).input_values)
     audio_feature = np.reshape(audio_feature,(-1,audio_feature.shape[0]))
     audio_feature = torch.FloatTensor(audio_feature).to(device=args.device)

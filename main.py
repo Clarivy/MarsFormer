@@ -143,15 +143,19 @@ def main():
     logdir = os.path.join(args.logdir, "web", args.name)
 
     if os.path.exists(logdir):
-        print("logdir exists, remove it? [Y/n]")
+        print(f"logdir {logdir} exists, remove it / Ingore / exit [Y/I/n]")
         while True:
             ans = input().strip().lower()
             if ans == "y":
                 shutil.rmtree(logdir)
+                os.makedirs(logdir)
+                break
+            elif ans == "i":
                 break
             elif ans == "n":
                 exit()
-    os.makedirs(logdir)
+    else:
+        os.makedirs(logdir)
     writer = SummaryWriter(log_dir=logdir)
 
 

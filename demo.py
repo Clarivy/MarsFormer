@@ -45,10 +45,10 @@ def test_model(args):
     one_hot = np.reshape(one_hot,(-1,one_hot.shape[0]))
     one_hot = torch.FloatTensor(one_hot).to(device=args.device)
 
+    temp = templates[args.subject]
     if args.base_model_path is not None:
-        temp = load_vertices(args.base_template, scale=1/100)
-    else:
-        temp = templates[args.subject]
+        # temp = load_vertices(args.base_template, scale=1/100)
+        temp = temp[:3931,:]
              
     template = temp.reshape((-1))
     template = np.reshape(template,(-1,template.shape[0]))

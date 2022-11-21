@@ -73,6 +73,8 @@ def read_data(args):
                     elif args.dataset == "BIWI":
                         data[key]["vertice"] = np.load(vertice_path,allow_pickle=True)
 
+                        
+
     subjects_dict = {}
     subjects_dict["train"] = [i for i in args.train_subjects.split(" ")]
     subjects_dict["val"] = [i for i in args.val_subjects.split(" ")]
@@ -99,7 +101,7 @@ def read_data(args):
 
 def get_dataloaders(args):
     dataset = {}
-    train_data, valid_data, test_data, subjects_dict = read_data(args)
+    train_data, valid_data, test_data, subjects_dict = read_data(args) # dataset | dict of three array: indicate 3 parts of subjects
     train_data = Dataset(train_data,subjects_dict,"train")
     dataset["train"] = data.DataLoader(dataset=train_data, batch_size=1, shuffle=True)
     valid_data = Dataset(valid_data,subjects_dict,"val")
@@ -118,7 +120,7 @@ def load_base_model(path, scale = 1):
         return None
 
     meshes = []
-    for filename in glob.glob(os.path.join(path, "*.obj")):
+    for filename in sorted(glob.glob(os.path.join(path, "*.obj"))):
         meshes.append(load_vertices(filename, scale=scale))
     return meshes
 

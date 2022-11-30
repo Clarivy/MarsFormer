@@ -221,9 +221,11 @@ def main():
     parser.add_argument("--model_template", type=str, required=False, help='path of model template to drive')
     parser.add_argument("--model_path", type=str, required=True, help='path of base pth path')
     parser.add_argument("--neg_penalty", type=float,required=False, default=1e-7, help='penalty for negative value in the base vector')
+    parser.add_argument("--no_render", action='store_true', help='whether to render the video')
     args = parser.parse_args()   
 
     test_model(args)
+    if not args.no_render:
     render_sequence(args)
 
 if __name__=="__main__":

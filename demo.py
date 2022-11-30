@@ -67,7 +67,7 @@ def test_model(args):
     audio_feature = np.reshape(audio_feature,(-1,audio_feature.shape[0]))
     audio_feature = torch.FloatTensor(audio_feature).to(device=args.device)
 
-    prediction = model.predict(audio_feature, template, one_hot)
+    prediction = model.predict(audio_feature, template, one_hot, base_only=args.base_only)
     prediction = prediction.squeeze() # (seq_len, V*3)
     np.save(os.path.join(args.result_path, test_name), prediction.detach().cpu().numpy())
 
@@ -222,7 +222,8 @@ def main():
     parser.add_argument("--model_path", type=str, required=True, help='path of base pth path')
     parser.add_argument("--neg_penalty", type=float,required=False, default=1e-7, help='penalty for negative value in the base vector')
     parser.add_argument("--no_render", action='store_true', help='whether to render the video')
-    args = parser.parse_args()   
+    parser.add_argument("--base_only", action='store_true', help='whether to save whole model or just base vector')
+    args = parser.parse_args()
 
     test_model(args)
     if not args.no_render:

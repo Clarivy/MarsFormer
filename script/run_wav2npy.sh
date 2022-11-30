@@ -18,4 +18,5 @@ python /data/new_disk/pangbai/FaceFormer/FaceFormer/demo.py \
 --condition FaceTalk_170913_03279_TA \
 --model_path $FACEFORMER_MODEL_PATH \
 --result_path $FACEFORMER_RESULT_PATH \
+--base_only \
 --no_render

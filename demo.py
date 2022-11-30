@@ -45,7 +45,12 @@ def test_model(args):
     one_hot = np.reshape(one_hot,(-1,one_hot.shape[0]))
     one_hot = torch.FloatTensor(one_hot).to(device=args.device)
 
+    if args.model_template is not None:
+        print('Load vertices')
+        temp = load_vertices(args.model_template, scale=1/100)
+    elif args.subject is not None:
     temp = templates[args.subject]
+
     if args.base_model_path is not None:
         # temp = load_vertices(args.base_template, scale=1/100)
         temp = temp[:3931,:]
@@ -207,12 +212,13 @@ def main():
     parser.add_argument("--wav_path", type=str, default="demo/wav/test.wav", help='path of the input audio signal')
     parser.add_argument("--result_path", type=str, default="demo/result", help='path of the predictions')
     parser.add_argument("--condition", type=str, default="M3", help='select a conditioning subject from train_subjects')
-    parser.add_argument("--subject", type=str, default="M1", help='select a subject from test_subjects or train_subjects')
+    parser.add_argument("--subject", type=str, required=False,default="M1", help='select a subject from test_subjects or train_subjects')
     parser.add_argument("--background_black", type=bool, default=True, help='whether to use black background')
     parser.add_argument("--template_path", type=str, default="templates.pkl", help='path of the personalized templates')
     parser.add_argument("--render_template_path", type=str, default="templates", help='path of the mesh in BIWI/FLAME topology')
     parser.add_argument("--base_model_path", type=str, required=False, help='path of base model')
     parser.add_argument("--base_template", type=str, required=False, help='path of base model template')
+    parser.add_argument("--model_template", type=str, required=False, help='path of model template to drive')
     parser.add_argument("--model_path", type=str, required=True, help='path of base pth path')
     parser.add_argument("--neg_penalty", type=float,required=False, default=1e-7, help='penalty for negative value in the base vector')
     args = parser.parse_args()   

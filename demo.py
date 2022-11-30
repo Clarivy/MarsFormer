@@ -49,7 +49,7 @@ def test_model(args):
         print('Load vertices')
         temp = load_vertices(args.model_template, scale=1/100)
     elif args.subject is not None:
-    temp = templates[args.subject]
+        temp = templates[args.subject]
 
     if args.base_model_path is not None:
         # temp = load_vertices(args.base_template, scale=1/100)
@@ -186,7 +186,7 @@ def render_sequence(args):
         writer.write(pred_img)
 
     writer.release()
-    file_name = test_name+"_"+args.subject+"_condition_"+args.condition
+    file_name = test_name + "_condition_" + args.condition
 
     video_fname = os.path.join(output_path, file_name+'.mp4')
     cmd = ('ffmpeg' + ' -i {0} -pix_fmt yuv420p -qscale 0 {1}'.format(
@@ -226,7 +226,7 @@ def main():
 
     test_model(args)
     if not args.no_render:
-    render_sequence(args)
+        render_sequence(args)
 
 if __name__=="__main__":
     main()

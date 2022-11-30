@@ -183,7 +183,7 @@ class Faceformer(nn.Module):
         loss = torch.mean(loss) - negative_penalty
         return loss
 
-    def predict(self, audio, template, one_hot):
+    def predict(self, audio, template, one_hot, base_only = False):
         template = template.unsqueeze(1) # (1,1, V*3)
         obj_embedding = self.obj_vector(one_hot)
         hidden_states = self.audio_encoder(audio, self.dataset).last_hidden_state
@@ -192,6 +192,7 @@ class Faceformer(nn.Module):
         elif self.dataset == "vocaset":
             frame_num = hidden_states.shape[1]
         hidden_states = self.audio_feature_map(hidden_states)
+        base_vec_arr = []
 
         output_frame = []
         for i in range(frame_num):
@@ -210,6 +211,7 @@ class Faceformer(nn.Module):
                 vertice_out = self.activation_func(vertice_out)
                 vertice_out = vertice_out.clip(0, 1)
                 # print("Matmuling |", vertice_out.shape, self.base_models.shape)
+                base_vec_arr = vertice_out
                 vertice_out = vertice_out @ self.device_base_models
             else:
                 vertice_out = self.vertice_map_r(vertice_out)
@@ -228,5 +230,8 @@ class Faceformer(nn.Module):
             #     vertice_emb = vertice_emb[:, start :, :]
 
         # output_frame = output_frame + template
-        vertice_out = vertice_out + template
-        return vertice_out
+        if base_only:
+            return base_vec_arr
+        else:
+            vertice_out = vertice_out + template
+            return vertice_out

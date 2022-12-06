@@ -6,7 +6,7 @@ import math,scipy
 from faceformer import Faceformer
 from transformers import Wav2Vec2FeatureExtractor,Wav2Vec2Processor
 from data_loader import load_vertices
-
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -33,7 +33,7 @@ def test_model(args):
     model = model.to(torch.device(args.device))
     model.eval()
 
-    template_file = os.path.join(args.dataset, args.template_path)
+    template_file = os.path.join("../../FaceFormer/"+args.dataset, args.template_path)
     with open(template_file, 'rb') as fin:
         templates = pickle.load(fin,encoding='latin1')
 
@@ -63,12 +63,15 @@ def test_model(args):
     test_name = os.path.basename(wav_path).split(".")[0]
     speech_array, sampling_rate = librosa.load(os.path.join(wav_path), sr=16000)
     processor = Wav2Vec2Processor.from_pretrained("./facebook/wav2vec_processor")
+    start=time.time()
     audio_feature = np.squeeze(processor(speech_array,sampling_rate=16000).input_values)
     audio_feature = np.reshape(audio_feature,(-1,audio_feature.shape[0]))
     audio_feature = torch.FloatTensor(audio_feature).to(device=args.device)
-
+    print("audio encoding:"+str(time.time()-start))
+    start=time.time()
     prediction = model.predict(audio_feature, template, one_hot, base_only=args.base_only)
     prediction = prediction.squeeze() # (seq_len, V*3)
+    print("prediction:"+str(time.time()-start))
     np.save(os.path.join(args.result_path, test_name), prediction.detach().cpu().numpy())
 
 # The implementation of rendering is borrowed from VOCA: https://github.com/TimoBolkart/voca/blob/master/utils/rendering.py
@@ -161,7 +164,7 @@ def render_sequence(args):
         if args.base_model_path is not None:
             template_file = args.base_template
         else:
-            template_file = os.path.join(args.dataset, args.render_template_path, "FLAME_sample.ply")
+            template_file = os.path.join("../../FaceFormer/"+args.dataset, args.render_template_path, "FLAME_sample.ply")
          
     print("rendering: ", test_name)
                  

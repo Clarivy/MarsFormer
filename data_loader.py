@@ -44,11 +44,12 @@ def read_data(args):
     valid_data = []
     test_data = []
 
-    audio_path = os.path.join(args.dataset, args.wav_path)
-    vertices_path = os.path.join(args.dataset, args.vertices_path)
+    audio_path = os.path.join("../../FaceFormer/"+args.dataset, args.wav_path)
+    print(audio_path)
+    vertices_path = os.path.join("../../FaceFormer/"+args.dataset, args.vertices_path)
     processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
 
-    template_file = os.path.join(args.dataset, args.template_file)
+    template_file = os.path.join("../../FaceFormer/"+args.dataset, args.template_file)
     with open(template_file, 'rb') as fin:
         templates = pickle.load(fin,encoding='latin1')
     

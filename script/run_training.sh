@@ -5,5 +5,5 @@ python main.py \
 --feature_dim 64 \
 --base_model_path ./data/FLAME \
 --base_template ./data/000_generic_neutral_mesh.obj \
---name leakyrelu_smallslope1e7 \
+--name performer_test_fast_attention_causal \
 --max_epoch 200

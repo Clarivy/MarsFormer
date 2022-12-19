@@ -7,6 +7,10 @@ import math
 from wav2vec import Wav2Vec2Model
 from data_loader import load_base_model, load_vertices
 import performer_pytorch
+from nystrom_attention import NystromAttention
+from linformer_pytorch import MHAttention
+from linear_attention_transformer import LinearAttentionTransformer
+import slim_performer_model
 
 # Temporal Bias, inspired by ALiBi: https://github.com/ofirpress/attention_with_linear_biases
 def init_biased_mask(n_head, max_seq_len, period):
@@ -71,6 +75,322 @@ from typing import Optional, Any, Union, Callable
 
 import torch
 from torch import Tensor
+from torch.nn.init import xavier_uniform_
+from torch.nn.init import constant_
+from torch.nn.init import xavier_normal_
+from torch.nn.parameter import Parameter
+from typing import Optional, Tuple
+
+class MultiheadAttention(nn.Module):
+    r"""Allows the model to jointly attend to information
+    from different representation subspaces.
+    See `Attention Is All You Need <https://arxiv.org/abs/1706.03762>`_
+
+    .. math::
+        \text{MultiHead}(Q, K, V) = \text{Concat}(head_1,\dots,head_h)W^O
+
+    where :math:`head_i = \text{Attention}(QW_i^Q, KW_i^K, VW_i^V)`.
+
+    Args:
+        embed_dim: total dimension of the model.
+        num_heads: parallel attention heads.
+        dropout: a Dropout layer on attn_output_weights. Default: 0.0.
+        bias: add bias as module parameter. Default: True.
+        add_bias_kv: add bias to the key and value sequences at dim=0.
+        add_zero_attn: add a new batch of zeros to the key and
+                       value sequences at dim=1.
+        kdim: total number of features in key. Default: None.
+        vdim: total number of features in value. Default: None.
+        batch_first: If ``True``, then the input and output tensors are provided
+            as (batch, seq, feature). Default: ``False`` (seq, batch, feature).
+
+    Note that if :attr:`kdim` and :attr:`vdim` are None, they will be set
+    to :attr:`embed_dim` such that query, key, and value have the same
+    number of features.
+
+    Examples::
+
+        >>> multihead_attn = nn.MultiheadAttention(embed_dim, num_heads)
+        >>> attn_output, attn_output_weights = multihead_attn(query, key, value)
+    """
+    __constants__ = ['batch_first']
+    bias_k: Optional[torch.Tensor]
+    bias_v: Optional[torch.Tensor]
+
+    def __init__(self, embed_dim, num_heads, dropout=0., bias=True, add_bias_kv=False, add_zero_attn=False,
+                 kdim=None, vdim=None, batch_first=False, device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(MultiheadAttention, self).__init__()
+        self.embed_dim = embed_dim
+        self.kdim = kdim if kdim is not None else embed_dim
+        self.vdim = vdim if vdim is not None else embed_dim
+        self._qkv_same_embed_dim = self.kdim == embed_dim and self.vdim == embed_dim
+
+        self.num_heads = num_heads
+        self.dropout = dropout
+        self.batch_first = batch_first
+        self.head_dim = embed_dim // num_heads
+        assert self.head_dim * num_heads == self.embed_dim, "embed_dim must be divisible by num_heads"
+
+        if self._qkv_same_embed_dim is False:
+            self.q_proj_weight = Parameter(torch.empty((embed_dim, embed_dim), **factory_kwargs))
+            self.k_proj_weight = Parameter(torch.empty((embed_dim, self.kdim), **factory_kwargs))
+            self.v_proj_weight = Parameter(torch.empty((embed_dim, self.vdim), **factory_kwargs))
+            self.register_parameter('in_proj_weight', None)
+        else:
+            self.in_proj_weight = Parameter(torch.empty((3 * embed_dim, embed_dim), **factory_kwargs))
+            self.register_parameter('q_proj_weight', None)
+            self.register_parameter('k_proj_weight', None)
+            self.register_parameter('v_proj_weight', None)
+
+        if bias:
+            self.in_proj_bias = Parameter(torch.empty(3 * embed_dim, **factory_kwargs))
+        else:
+            self.register_parameter('in_proj_bias', None)
+        self.out_proj = nn.modules.linear.NonDynamicallyQuantizableLinear(embed_dim, embed_dim, bias=bias, **factory_kwargs)
+
+        if add_bias_kv:
+            self.bias_k = Parameter(torch.empty((1, 1, embed_dim), **factory_kwargs))
+            self.bias_v = Parameter(torch.empty((1, 1, embed_dim), **factory_kwargs))
+        else:
+            self.bias_k = self.bias_v = None
+
+        self.add_zero_attn = add_zero_attn
+
+        self._reset_parameters()
+
+    def _reset_parameters(self):
+        if self._qkv_same_embed_dim:
+            xavier_uniform_(self.in_proj_weight)
+        else:
+            xavier_uniform_(self.q_proj_weight)
+            xavier_uniform_(self.k_proj_weight)
+            xavier_uniform_(self.v_proj_weight)
+
+        if self.in_proj_bias is not None:
+            constant_(self.in_proj_bias, 0.)
+            constant_(self.out_proj.bias, 0.)
+        if self.bias_k is not None:
+            xavier_normal_(self.bias_k)
+        if self.bias_v is not None:
+            xavier_normal_(self.bias_v)
+
+    def __setstate__(self, state):
+        # Support loading old MultiheadAttention checkpoints generated by v1.1.0
+        if '_qkv_same_embed_dim' not in state:
+            state['_qkv_same_embed_dim'] = True
+
+        super(MultiheadAttention, self).__setstate__(state)
+
+    def forward(self, query: Tensor, key: Tensor, value: Tensor, key_padding_mask: Optional[Tensor] = None,
+                need_weights: bool = True, attn_mask: Optional[Tensor] = None) -> Tuple[Tensor, Optional[Tensor]]:
+        r"""
+    Args:
+        query, key, value: map a query and a set of key-value pairs to an output.
+            See "Attention Is All You Need" for more details.
+        key_padding_mask: if provided, specified padding elements in the key will
+            be ignored by the attention. When given a binary mask and a value is True,
+            the corresponding value on the attention layer will be ignored. When given
+            a byte mask and a value is non-zero, the corresponding value on the attention
+            layer will be ignored
+        need_weights: output attn_output_weights.
+        attn_mask: 2D or 3D mask that prevents attention to certain positions. A 2D mask will be broadcasted for all
+            the batches while a 3D mask allows to specify a different mask for the entries of each batch.
+
+    Shapes for inputs:
+        - query: :math:`(L, N, E)` where L is the target sequence length, N is the batch size, E is
+          the embedding dimension. :math:`(N, L, E)` if ``batch_first`` is ``True``.
+        - key: :math:`(S, N, E)`, where S is the source sequence length, N is the batch size, E is
+          the embedding dimension. :math:`(N, S, E)` if ``batch_first`` is ``True``.
+        - value: :math:`(S, N, E)` where S is the source sequence length, N is the batch size, E is
+          the embedding dimension. :math:`(N, S, E)` if ``batch_first`` is ``True``.
+        - key_padding_mask: :math:`(N, S)` where N is the batch size, S is the source sequence length.
+          If a ByteTensor is provided, the non-zero positions will be ignored while the position
+          with the zero positions will be unchanged. If a BoolTensor is provided, the positions with the
+          value of ``True`` will be ignored while the position with the value of ``False`` will be unchanged.
+        - attn_mask: if a 2D mask: :math:`(L, S)` where L is the target sequence length, S is the
+          source sequence length.
+
+          If a 3D mask: :math:`(N\cdot\text{num\_heads}, L, S)` where N is the batch size, L is the target sequence
+          length, S is the source sequence length. ``attn_mask`` ensure that position i is allowed to attend
+          the unmasked positions. If a ByteTensor is provided, the non-zero positions are not allowed to attend
+          while the zero positions will be unchanged. If a BoolTensor is provided, positions with ``True``
+          is not allowed to attend while ``False`` values will be unchanged. If a FloatTensor
+          is provided, it will be added to the attention weight.
+
+    Shapes for outputs:
+        - attn_output: :math:`(L, N, E)` where L is the target sequence length, N is the batch size,
+          E is the embedding dimension. :math:`(N, L, E)` if ``batch_first`` is ``True``.
+        - attn_output_weights: :math:`(N, L, S)` where N is the batch size,
+          L is the target sequence length, S is the source sequence length.
+        """
+        if self.batch_first:
+            query, key, value = [x.transpose(1, 0) for x in (query, key, value)]
+
+        if not self._qkv_same_embed_dim:
+            attn_output, attn_output_weights = F.multi_head_attention_forward(
+                query, key, value, self.embed_dim, self.num_heads,
+                self.in_proj_weight, self.in_proj_bias,
+                self.bias_k, self.bias_v, self.add_zero_attn,
+                self.dropout, self.out_proj.weight, self.out_proj.bias,
+                training=self.training,
+                key_padding_mask=key_padding_mask, need_weights=need_weights,
+                attn_mask=attn_mask, use_separate_proj_weight=True,
+                q_proj_weight=self.q_proj_weight, k_proj_weight=self.k_proj_weight,
+                v_proj_weight=self.v_proj_weight)
+            #attn_output, attn_output_weights = performer_pytorch.FastAttention(query, key, value)
+        else:
+            attn_output, attn_output_weights = F.multi_head_attention_forward(
+                query, key, value, self.embed_dim, self.num_heads,
+                self.in_proj_weight, self.in_proj_bias,
+                self.bias_k, self.bias_v, self.add_zero_attn,
+                self.dropout, self.out_proj.weight, self.out_proj.bias,
+                training=self.training,
+                key_padding_mask=key_padding_mask, need_weights=need_weights,
+                attn_mask=attn_mask)
+            #attn_output, attn_output_weights = performer_pytorch.FastAttention(query, key, value)
+        if self.batch_first:
+            return attn_output.transpose(1, 0), attn_output_weights
+        else:
+            return attn_output, attn_output_weights
+
+class TransformerDecoderLayer(nn.Module):
+    r"""TransformerDecoderLayer is made up of self-attn, multi-head-attn and feedforward network.
+    This standard decoder layer is based on the paper "Attention Is All You Need".
+    Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez,
+    Lukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In Advances in
+    Neural Information Processing Systems, pages 6000-6010. Users may modify or implement
+    in a different way during application.
+
+    Args:
+        d_model: the number of expected features in the input (required).
+        nhead: the number of heads in the multiheadattention models (required).
+        dim_feedforward: the dimension of the feedforward network model (default=2048).
+        dropout: the dropout value (default=0.1).
+        activation: the activation function of intermediate layer, relu or gelu (default=relu).
+        layer_norm_eps: the eps value in layer normalization components (default=1e-5).
+        batch_first: If ``True``, then the input and output tensors are provided
+            as (batch, seq, feature). Default: ``False``.
+
+    Examples::
+        >>> decoder_layer = nn.TransformerDecoderLayer(d_model=512, nhead=8)
+        >>> memory = torch.rand(10, 32, 512)
+        >>> tgt = torch.rand(20, 32, 512)
+        >>> out = decoder_layer(tgt, memory)
+
+    Alternatively, when ``batch_first`` is ``True``:
+        >>> decoder_layer = nn.TransformerDecoderLayer(d_model=512, nhead=8, batch_first=True)
+        >>> memory = torch.rand(32, 10, 512)
+        >>> tgt = torch.rand(32, 20, 512)
+        >>> out = decoder_layer(tgt, memory)
+    """
+    __constants__ = ['batch_first']
+
+    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, activation="relu",
+                 layer_norm_eps=1e-5, batch_first=False, device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(TransformerDecoderLayer, self).__init__()
+        # self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
+        #                                     **factory_kwargs)
+        # self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
+        #                                     **factory_kwargs)
+
+        self.self_attn = performer_pytorch.SelfAttention(dim=d_model, heads=nhead,dim_head=d_model//nhead, causal = True,dropout=dropout).cuda()
+        self.multihead_attn = performer_pytorch.CrossAttention(dim=d_model, heads=nhead,dim_head=d_model//nhead, causal = False,dropout=dropout).cuda()
+        
+        # self.self_attn = performer_pytorch.FastAttention(nb_features=d_model, dim_heads=nhead, causal = True)
+        # self.multihead_attn = performer_pytorch.FastAttention(nb_features=d_model, dim_heads=nhead, causal = False)
+        # self.self_attn = slim_performer_model.MultiHeadAttention(feature_type='favor+',n_heads=nhead,hidden_dim=d_model,compute_type='iter')
+        # self.multihead_attn = slim_performer_model.MultiHeadAttention(feature_type='favor+',n_heads=nhead,hidden_dim=d_model,compute_type='ps_parallel')
+        # self.self_attn = MHAttention(
+        #     dim_k=d_model, # What to sample the input length down to
+        #     nhead=nhead, # Number of heads
+        #     dropout=dropout, # Dropout for each of the heads
+        # )
+        # self.self_attn = MHAttention(
+        #     input_size=d_model, # Dimension 1 of the input
+        #     channels=d_model, # Dimensidon 2 of the input
+        #     dim=d_model, # Dim of each attn head
+        #     dim_k=d_model, # What to sample the input length down to
+        #     nhead=nhead, # Number of heads
+        #     dropout=dropout, # Dropout for each of the heads
+        # )
+        # self.self_attn = LinearAttentionTransformer(
+        #     dim = d_model,
+        #     heads = nhead,
+        #     depth = 1,
+        #     max_seq_len = 8192,
+        #     n_local_attn_heads = 4,
+        #     causal=True,
+        # ).cuda()
+        # self.multihead_attn = LinearAttentionTransformer(
+        #     dim = d_model,
+        #     heads = nhead,
+        #     depth = 1,
+        #     max_seq_len = 8192,
+        #     n_local_attn_heads = 4
+        # ).cuda()
+        # Implementation of Feedforward model
+        self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
+
+        self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm3 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.dropout3 = nn.Dropout(dropout)
+
+        self.activation = _get_activation_fn(activation)
+
+    def __setstate__(self, state):
+        if 'activation' not in state:
+            state['activation'] = F.relu
+        super(TransformerDecoderLayer, self).__setstate__(state)
+
+    def forward(self, tgt: Tensor, memory: Tensor, tgt_mask: Optional[Tensor] = None, memory_mask: Optional[Tensor] = None,
+                tgt_key_padding_mask: Optional[Tensor] = None, memory_key_padding_mask: Optional[Tensor] = None) -> Tensor:
+        r"""Pass the inputs (and mask) through the decoder layer.
+
+        Args:
+            tgt: the sequence to the decoder layer (required).
+            memory: the sequence from the last layer of the encoder (required).
+            tgt_mask: the mask for the tgt sequence (optional).
+            memory_mask: the mask for the memory sequence (optional).
+            tgt_key_padding_mask: the mask for the tgt keys per batch (optional).
+            memory_key_padding_mask: the mask for the memory keys per batch (optional).
+
+        Shape:
+            see the docs in Transformer class.
+        """
+        # tgt2 = self.self_attn(tgt, tgt, tgt, attn_mask=tgt_mask,
+        #                       key_padding_mask=tgt_key_padding_mask)[0]
+        tgt2 = self.self_attn(tgt)
+        tgt = tgt + self.dropout1(tgt2)
+        tgt = self.norm1(tgt)
+        # tgt2 = self.multihead_attn(tgt, memory, memory, attn_mask=memory_mask,
+        #                            key_padding_mask=memory_key_padding_mask)[0]
+        tgt2 = self.multihead_attn(x=tgt, context=memory)
+        tgt = tgt + self.dropout2(tgt2)
+        tgt = self.norm2(tgt)
+        tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
+        tgt = tgt + self.dropout3(tgt2)
+        tgt = self.norm3(tgt)
+        return tgt
+
+
+def _get_clones(module, N):
+    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
+
+
+def _get_activation_fn(activation):
+    if activation == "relu":
+        return F.relu
+    elif activation == "gelu":
+        return F.gelu
+
+    raise RuntimeError("activation should be relu/gelu, not {}".format(activation))
 
 
 
@@ -82,126 +402,6 @@ def _get_activation_fn(activation: str) -> Callable[[Tensor], Tensor]:
         return F.gelu
 
     raise RuntimeError("activation should be relu/gelu, not {}".format(activation))
-
-class TransformerDecoderLayer(nn.Module):
-    r"""TransformerDecoderLayer is made up of self-attn, multi-head-attn and feedforward network.
-    This standard decoder layer is based on the paper "Attention Is All You Need".
-    Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez,
-    Lukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In Advances in
-    Neural Information Processing Systems, pages 6000-6010. Users may modify or implement
-    in a different way during application.
-    Args:
-        d_model: the number of expected features in the input (required).
-        nhead: the number of heads in the multiheadattention models (required).
-        dim_feedforward: the dimension of the feedforward network model (default=2048).
-        dropout: the dropout value (default=0.1).
-        activation: the activation function of the intermediate layer, can be a string
-            ("relu" or "gelu") or a unary callable. Default: relu
-        layer_norm_eps: the eps value in layer normalization components (default=1e-5).
-        batch_first: If ``True``, then the input and output tensors are provided
-            as (batch, seq, feature). Default: ``False`` (seq, batch, feature).
-        norm_first: if ``True``, layer norm is done prior to self attention, multihead
-            attention and feedforward operations, respectively. Otherwise it's done after.
-            Default: ``False`` (after).
-    Examples::
-        >>> decoder_layer = nn.TransformerDecoderLayer(d_model=512, nhead=8)
-        >>> memory = torch.rand(10, 32, 512)
-        >>> tgt = torch.rand(20, 32, 512)
-        >>> out = decoder_layer(tgt, memory)
-    Alternatively, when ``batch_first`` is ``True``:
-        >>> decoder_layer = nn.TransformerDecoderLayer(d_model=512, nhead=8, batch_first=True)
-        >>> memory = torch.rand(32, 10, 512)
-        >>> tgt = torch.rand(32, 20, 512)
-        >>> out = decoder_layer(tgt, memory)
-    """
-    __constants__ = ['batch_first', 'norm_first']
-
-    def __init__(self, d_model: int, nhead: int, dim_feedforward: int = 2048, dropout: float = 0.1,
-                 activation: Union[str, Callable[[Tensor], Tensor]] = F.relu,
-                 layer_norm_eps: float = 1e-5, batch_first: bool = False, norm_first: bool = False,
-                 device=None, dtype=None) -> None:
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        super(TransformerDecoderLayer, self).__init__()
-        # self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
-        #                                     **factory_kwargs)
-        # self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
-        #                                          **factory_kwargs)
-        self.self_attn = performer_pytorch.SelfAttention(dim=d_model, heads=nhead, causal = False,dropout=dropout).cuda()
-        self.multihead_attn = performer_pytorch.SelfAttention(dim=d_model, heads=nhead, causal = False,dropout=dropout).cuda()
-        # Implementation of Feedforward model
-        self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
-        self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
-
-        self.norm_first = norm_first
-        self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        self.norm3 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
-        self.dropout3 = nn.Dropout(dropout)
-
-        # Legacy string support for activation function.
-        if isinstance(activation, str):
-            self.activation = _get_activation_fn(activation)
-        else:
-            self.activation = activation
-
-    def __setstate__(self, state):
-        if 'activation' not in state:
-            state['activation'] = F.relu
-        super(TransformerDecoderLayer, self).__setstate__(state)
-
-    def forward(self, tgt: Tensor, memory: Tensor, tgt_mask: Optional[Tensor] = None, memory_mask: Optional[Tensor] = None,
-                tgt_key_padding_mask: Optional[Tensor] = None, memory_key_padding_mask: Optional[Tensor] = None) -> Tensor:
-        r"""Pass the inputs (and mask) through the decoder layer.
-        Args:
-            tgt: the sequence to the decoder layer (required).
-            memory: the sequence from the last layer of the encoder (required).
-            tgt_mask: the mask for the tgt sequence (optional).
-            memory_mask: the mask for the memory sequence (optional).
-            tgt_key_padding_mask: the mask for the tgt keys per batch (optional).
-            memory_key_padding_mask: the mask for the memory keys per batch (optional).
-        Shape:
-            see the docs in Transformer class.
-        """
-        # see Fig. 1 of https://arxiv.org/pdf/2002.04745v1.pdf
-
-        x = tgt
-        if self.norm_first:
-            x = x + self._sa_block(self.norm1(x), tgt_mask, tgt_key_padding_mask)
-            x = x + self._mha_block(self.norm2(x), memory, memory_mask, memory_key_padding_mask)
-            x = x + self._ff_block(self.norm3(x))
-        else:
-            x = self.norm1(x + self._sa_block(x, tgt_mask, tgt_key_padding_mask))
-            x = self.norm2(x + self._mha_block(x, memory, memory_mask, memory_key_padding_mask))
-            x = self.norm3(x + self._ff_block(x))
-
-        return x
-
-    # self-attention block
-    def _sa_block(self, x: Tensor,
-                  attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor]) -> Tensor:
-        x = self.self_attn(x, x, x,
-                           attn_mask=attn_mask,
-                           key_padding_mask=key_padding_mask,
-                           need_weights=False)[0]
-        return self.dropout1(x)
-
-    # multihead attention block
-    def _mha_block(self, x: Tensor, mem: Tensor,
-                   attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor]) -> Tensor:
-        x = self.multihead_attn(x, mem, mem,
-                                attn_mask=attn_mask,
-                                key_padding_mask=key_padding_mask,
-                                need_weights=False)[0]
-        return self.dropout2(x)
-
-    # feed forward block
-    def _ff_block(self, x: Tensor) -> Tensor:
-        x = self.linear2(self.dropout(self.activation(self.linear1(x))))
-        return self.dropout3(x)
-
 
 
 class Faceformer(nn.Module):
@@ -227,6 +427,7 @@ class Faceformer(nn.Module):
         self.biased_mask = init_biased_mask(n_head = 4, max_seq_len = 600, period=args.period)
         decoder_layer = TransformerDecoderLayer(d_model=args.feature_dim, nhead=4, dim_feedforward=2*args.feature_dim, batch_first=True)        
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=1)
+        #self.performer_decoder = performer_pytorch.Performer(dim=args.feature_dim, heads=4, dim_head=args.feature_dim//4, causal=True, depth=1).cuda()
         # motion decoder
         self.vertice_map_r = nn.Linear(args.feature_dim, args.vertice_dim)
         
@@ -277,6 +478,7 @@ class Faceformer(nn.Module):
             tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().to(device=self.device)
             memory_mask = enc_dec_mask(self.device, self.dataset, vertice_input.shape[1], hidden_states.shape[1])
             vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
+            #vertice_out = self.performer_decoder(vertice_input, hidden_states)
             if self.base_models is not None:
                 vertice_out = self.base_map_r(vertice_out)
                 vertice_out = self.activation_func(vertice_out)
@@ -296,6 +498,7 @@ class Faceformer(nn.Module):
                 tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().to(device=self.device)
                 memory_mask = enc_dec_mask(self.device, self.dataset, vertice_input.shape[1], hidden_states.shape[1])
                 vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
+                #vertice_out = self.performer_decoder(vertice_input, hidden_states)
                 if self.base_models is not None:
                     vertice_out = self.base_map_r(vertice_out)
                     vertice_out = self.activation_func(vertice_out)

@@ -18,14 +18,14 @@
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal",
-            "justMyCode": true,
+            "justMyCode": false,
             "args": [
                 "--dataset","vocaset",
                 "--vertice_dim","11793",
                 "--feature_dim","64",
                 "--base_model_path","./data/FLAME",
                 "--base_template","./data/000_generic_neutral_mesh.obj",
-                "--name","performer_test_fast_attention_causal",
+                "--name","performer_test_fast_attention_causal_debug",
                 "--max_epoch","200",
             ]
         },

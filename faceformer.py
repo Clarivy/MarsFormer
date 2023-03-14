@@ -136,15 +136,13 @@ class Faceformer(nn.Module):
         }
         return losses
 
-    def predict(self, audio, template, one_hot, base_only = False):
+    def predict(self, audio, template, one_hot):
         template = template.unsqueeze(1) # (1,1, V*3)
         obj_embedding = self.obj_vector(one_hot)
         hidden_states = self.audio_encoder(audio).last_hidden_state
         frame_num = hidden_states.shape[1]
         hidden_states = self.audio_feature_map(hidden_states)
-        base_vec_arr = []
 
-        output_frame = []
         for i in range(frame_num):
             if i==0:
                 vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
@@ -156,35 +154,13 @@ class Faceformer(nn.Module):
             tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
             memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1])
             vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
-            if self.base_models is not None:
-                vertice_out = self.base_map_r(vertice_out)
-                vertice_out = self.activation_func(vertice_out)
-                vertice_out = vertice_out.clip(0, 1)
-                # print("Matmuling |", vertice_out.shape, self.base_models.shape)
-                base_vec_arr = vertice_out
-                vertice_out = vertice_out @ self.device_base_models
-            else:
-                vertice_out = self.vertice_map_r(vertice_out)
-            # if i == 0:
-            #     output_frame = vertice_out
-            # else:
-            #     print(vertice_out.shape, vertice_out[:,-1:,:].shape)
-            #     print(output_frame.shape)
-            #     output_frame = torch.cat((output_frame, vertice_out[:,-1:,:]), 1)
+            vertice_out = self.vertice_map_r(vertice_out)
             new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
             new_output = new_output + style_emb
             vertice_emb = torch.cat((vertice_emb, new_output), 1)
-            # print(vertice_emb.shape)
-            # if vertice_emb.size(1) > 600:
-            #     start = vertice_emb.size(1) - 600
-            #     vertice_emb = vertice_emb[:, start :, :]
 
-        # output_frame = output_frame + template
-        if base_only:
-            return base_vec_arr
-        else:
-            vertice_out = vertice_out + template
-            return vertice_out
+        vertice_out = vertice_out + template
+        return vertice_out
 
 def create_model(opt, subject_num):
     model = Faceformer(opt, subject_num=subject_num)

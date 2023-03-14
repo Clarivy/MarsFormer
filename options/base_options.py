@@ -21,6 +21,8 @@ class BaseOptions():
         self.parser.add_argument("--feature_dim", type=int, default=64, help='64 for vocaset; 128 for BIWI')
         self.parser.add_argument('--vertice_dim', type=int, default=14062 * 3, help='number of vertices to this size')
         self.parser.add_argument('--max_len', type=int, default=400, help='number of maximum frame num')
+        self.parser.add_argument("--period", type=int, default=30, help='period in PPE - 30 for vocaset; 25 for BIWI')
+        self.parser.add_argument("--neg_penalty", type=float,required=False, default=1e-2, help='penalty for negative value in the base vector')
 
         # for setting inputs
         self.parser.add_argument('--dataroot', type=str, default='./data/GNPFA/') 
@@ -42,14 +44,17 @@ class BaseOptions():
         self.parser.add_argument('--tf_log', action='store_true', help='if specified, use tensorboard logging. Requires tensorflow installed')
 
         self.initialized = True
+    
+    def split_subjects(subjects):
+        return sorted(list(filter(lambda x: x != '', subjects.split(" "))))
 
     def parse(self, save=True):
         if not self.initialized:
             self.initialize()
         self.opt = self.parser.parse_args()
         self.opt.isTrain = self.isTrain   # train or test
-        self.train_subjects = sorted([i for i in self.opt.train_subjects.split(" ")])
-        self.valid_subjects = sorted([i for i in self.opt.valid_subjects.split(" ")])
+        self.opt.train_subjects = BaseOptions.split_subjects(self.opt.train_subjects)
+        self.opt.valid_subjects = BaseOptions.split_subjects(self.opt.valid_subjects)
 
         self.opt.gpu_id = int(self.opt.gpu_id)
         torch.cuda.set_device(self.opt.gpu_id)

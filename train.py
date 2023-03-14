@@ -91,7 +91,7 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
 
     ### save model for this epoch
     if epoch % opt.save_epoch_freq == 0:
-        print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
+        print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))
         util.save_model(model, model_save_dir, 'latest')
         util.save_model(model, model_save_dir, str(epoch))
         np.savetxt(iter_path, (epoch+1, 0), delimiter=',', fmt='%d')

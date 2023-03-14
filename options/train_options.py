@@ -21,7 +21,5 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help='gradient accumulation')
 
         # for model
-        self.parser.add_argument("--period", type=int, default=30, help='period in PPE - 30 for vocaset; 25 for BIWI')
-        self.parser.add_argument("--neg_penalty", type=float,required=False, default=1e-2, help='penalty for negative value in the base vector')
 
         self.isTrain = True

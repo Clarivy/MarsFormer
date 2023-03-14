@@ -138,15 +138,6 @@ class NPFADataset(data.Dataset):
         self.vertice_dim = opt.vertice_dim
         self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
 
-        def use_identity(identity_name):
-            if opt.phase == 'train' and identity_name in opt.train_subjects:
-                return True
-            if opt.phase == 'valid' and identity_name in opt.valid_subjects:
-                return True
-            if opt.phase == 'debug':
-                return True
-            return False
-
         # Check if data path exists
         if not os.path.exists(self.phase_data_root):
             raise Exception("Data path does not exist: {}".format(self.phase_data_root))
@@ -166,25 +157,31 @@ class NPFADataset(data.Dataset):
         self.identity_dirs = list(sorted(glob.glob(os.path.join(opt.dataroot, 'identity', '*.npy'))))  
         if len(self.identity_dirs) == 0:
             raise Exception("No identities found in: {}".format(opt.dara_root))
+        if opt.phase == 'valid':
+            self.condition_index = opt.train_subjects.index(opt.condition_subject)
         identity_count = 0
         for identity_dir in self.identity_dirs:
             identity_name = Path(os.path.basename(identity_dir)).stem
-            if use_identity(identity_name):
+            if NPFADataset.use_identity(opt, identity_name):
                 self.identity_dict[identity_name] = (
-                    identity_count,
+                    identity_count if opt.phase != 'valid' else self.condition_index,
                     torch.FloatTensor(np.load(identity_dir)[0]).flatten(0), # (14062 * 3,)
                 )
                 identity_count += 1
         if identity_count == 0:
             raise Exception("No identities found for {} mode in: {}".format(opt.phase, opt.dara_root))
-        self.one_hot_labels = torch.eye(identity_count, dtype=torch.float) # (num_identities, num_identities)
+
+        if opt.phase == "train" or opt.phase == 'debug':
+            if identity_count != len(opt.train_subjects):
+                raise Exception(f"Number of identities found for {opt.phase} mode in {opt.dataroot} is not equal to the number of subjects specified in the option. Expect {opt.train_subjects}, but found identities: {self.identity_dict.keys()}")
+        self.one_hot_labels = torch.eye(len(opt.train_subjects), dtype=torch.float) # (num_identities, num_identities)
 
         # Load data to memory
         self.data = []
         for data_dir in tqdm(self.data_dirs, desc='Loading data'):
             # Load audio
-            wav_path = os.path.join(data_dir, "audio.wav")
-            speech_array, sampling_rate = librosa.load(wav_path, sr=16000)
+            audio_dir = os.path.join(data_dir, "audio.wav")
+            speech_array, sampling_rate = librosa.load(audio_dir, sr=16000)
             wav_data = torch.FloatTensor(np.squeeze(self.processor(speech_array,sampling_rate=16000).input_values))
             
             vertices_30fps_dirs = list(sorted(glob.glob(os.path.join(data_dir, '*/mesh_pred_all_vs_30fps.npy'))))
@@ -207,13 +204,16 @@ class NPFADataset(data.Dataset):
                 # Check if the number of vertices is correct
                 if vertices_data.shape[1] != self.vertice_dim:
                     raise Exception(f"Number of vertices in {vertices_dir} is not correct, expect {self.vertice_dim}, but read {vertices_data.shape[1]}")
-
+                
                 # vertices_data = (vertices_data - identity_neutral).clone.detach()
                 data_item = {
                     'audio'   : wav_data.unsqueeze(0),
                     'vertice' : vertices_data.unsqueeze(0),
                     'template': identity_neutral.unsqueeze(0),
                     'one_hot' : self.one_hot_labels[identity_index].unsqueeze(0),
+                    'identity_name': identity_name,
+                    'audio_dir': audio_dir,
+                    'vertices_dir': vertices_dir
                 }
                 self.data.append(data_item)
     
@@ -222,17 +222,38 @@ class NPFADataset(data.Dataset):
         frame_num = self.data[index]['vertice'].shape[1]
         if frame_num > self.max_len:
             start = random.randint(0, frame_num - self.max_len)
+            clipped_vertice, clipped_audio = NPFADataset.clip(
+                self.data[index]['vertice'],
+                start,
+                start + self.max_len,
+                self.data[index]['audio']
+            )
             return {
-                'audio'   : self.data[index]['audio'][:,start:start+self.max_len],
-                'vertice' : self.data[index]['vertice'][:,start:start+self.max_len],
-                'template': self.data[index]['template'],
-                'one_hot' : self.data[index]['one_hot'],
+                **self.data[index],
+                'audio'   : clipped_audio,
+                'vertice' : clipped_vertice
             }
         return self.data[index]
     
     @property
     def identity_num(self):
         return len(self.identity_dict)
+
+    def use_identity(opt, identity_name):
+        if (opt.phase == 'train' or opt.phase == 'debug') and (identity_name in opt.train_subjects):
+            return True
+        if opt.phase == 'valid' and identity_name in opt.valid_subjects:
+            return True
+        return False
+
+    def clip(vertice, start, end, audio):
+        vertice_frame_num = vertice.shape[1]
+        audio_frame_num = audio.shape[1]
+        audio_start = start * audio_frame_num // vertice_frame_num
+        audio_end = end * audio_frame_num // vertice_frame_num
+        clipped_vertice = vertice[:,start:end]
+        clipped_audio = audio[:,audio_start:audio_end]
+        return clipped_vertice, clipped_audio
     
     def __len__(self):
         return len(self.data)

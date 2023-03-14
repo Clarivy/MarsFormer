@@ -5,16 +5,54 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Debug train",
+            "name": "Python: Debug Train",
             "type": "python",
             "request": "launch",
             "program": "train.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--name", "test",
-                "--gpu_id", "0",
-                "--dataroot", "./data/GNPFA/",
+                "--name",
+                "debug_1",
+                "--gpu_id",
+                "0",
+                "--dataroot",
+                "./data/GNPFA/",
+                "--tf_log",
+                "--phase", "debug"
+            ]
+        },
+        {
+            "name": "Python: train",
+            "type": "python",
+            "request": "launch",
+            "program": "train.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--name",
+                "test",
+                "--gpu_id",
+                "0",
+                "--dataroot",
+                "./data/GNPFA/",
+                "--tf_log"
+            ]
+        },
+        {
+            "name": "Python: Debug Valid",
+            "type": "python",
+            "request": "launch",
+            "program": "valid.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--name",
+                "debug_1",
+                "--gpu_id",
+                "0",
+                "--dataroot",
+                "./data/GNPFA/",
                 "--tf_log"
             ]
         },

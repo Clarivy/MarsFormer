@@ -88,13 +88,13 @@ class Wav2Vec2Model(Wav2Vec2Model):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # input_values [1, 86667]
+        # input_values  [1, 86667]       [1, 112299]
         hidden_states = self.feature_extractor(input_values)
-        # hidden_states [1, 512, 270]
+        # hidden_states [1, 512, 270]    [1, 512, 350]
         hidden_states = hidden_states.transpose(1, 2)
-
+        # hidden_states [1, 270, 512]    [1, 350, 512]
         hidden_states = linear_interpolation(hidden_states, 50, 30,output_len=frame_num)
-        # hidden_states [1, 163, 768]
+        # hidden_states [1, 163, 768]    [1, 210, 512]
      
         if attention_mask is not None:
             output_lengths = self._get_feat_extract_output_lengths(attention_mask.sum(-1))

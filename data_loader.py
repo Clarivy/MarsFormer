@@ -213,7 +213,8 @@ class NPFADataset(data.Dataset):
                     'one_hot' : self.one_hot_labels[identity_index].unsqueeze(0),
                     'identity_name': identity_name,
                     'audio_dir': audio_dir,
-                    'vertices_dir': vertices_dir
+                    'vertices_dir': vertices_dir,
+                    'data_dir': data_dir
                 }
                 self.data.append(data_item)
     

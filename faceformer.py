@@ -6,6 +6,7 @@ import copy
 import math
 from wav2vec import Wav2Vec2Model
 from data_loader import load_base_model, load_vertices
+import os
 
 # Temporal Bias, inspired by ALiBi: https://github.com/ofirpress/attention_with_linear_biases
 def init_biased_mask(n_head, max_seq_len, period):
@@ -95,7 +96,6 @@ class Faceformer(nn.Module):
         nn.init.constant_(self.vertice_map_r.weight, 0)
         nn.init.constant_(self.vertice_map_r.bias, 0)
 
-
     def forward(self, audio, vertice, template, one_hot, criterion):
         # tgt_mask: :math:`(T, T)`.
         # memory_mask: :math:`(T, S)`.
@@ -161,4 +161,13 @@ class Faceformer(nn.Module):
 
 def create_model(opt):
     model = Faceformer(opt)
+
+    if (not opt.isTrain) or (opt.continue_train):
+        pretrained_path = os.path.join(opt.checkpoints_dir, opt.name)
+        model_path = os.path.join(pretrained_path, f'{opt.which_epoch}_model.pth')
+        model.load_state_dict(torch.load(model_path))
+        print(f"Model [{type(model).__name__}] is loaded from {model_path}")
+    
+    print(f"Model [{type(model).__name__}] is created")
+
     return model

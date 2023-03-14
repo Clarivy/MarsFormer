@@ -75,7 +75,6 @@ class Wav2Vec2Model(Wav2Vec2Model):
     def forward(
         self,
         input_values,
-        dataset,
         attention_mask=None,
         output_attentions=None,
         output_hidden_states=None,
@@ -89,17 +88,13 @@ class Wav2Vec2Model(Wav2Vec2Model):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # input_values [1, 86667]
         hidden_states = self.feature_extractor(input_values)
+        # hidden_states [1, 512, 270]
         hidden_states = hidden_states.transpose(1, 2)
 
-        if dataset == "BIWI":
-            # cut audio feature
-            if hidden_states.shape[1]%2 != 0:
-                hidden_states = hidden_states[:, :-1]
-            if frame_num and hidden_states.shape[1]>frame_num*2:
-                hidden_states = hidden_states[:, :frame_num*2]
-        elif dataset == "vocaset":
-            hidden_states = linear_interpolation(hidden_states, 50, 30,output_len=frame_num)
+        hidden_states = linear_interpolation(hidden_states, 50, 30,output_len=frame_num)
+        # hidden_states [1, 163, 768]
      
         if attention_mask is not None:
             output_lengths = self._get_feat_extract_output_lengths(attention_mask.sum(-1))

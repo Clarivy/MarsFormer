@@ -32,8 +32,12 @@ def trainer(args, train_loader, dev_loader, model, optimizer, criterion, writer:
         for i, (audio, vertice, template, one_hot, file_name) in pbar:
             iteration += 1
             # to gpu
+            # audio [1, 86667]
+            # vertice [1, 163, 11793]
+            # template [1, 11793]
+            # one_hot [1, 8]
             audio, vertice, template, one_hot  = audio.to(device="cuda"), vertice.to(device="cuda"), template.to(device="cuda"), one_hot.to(device="cuda")
-            loss = model(audio, template,  vertice, one_hot, criterion, writer=writer, global_step = iteration,teacher_forcing=False)
+            loss = model(audio, vertice, template, criterion, teacher_forcing=False)
             loss.backward()
             loss_log.append(loss.item())
             if i % args.gradient_accumulation_steps==0:
@@ -135,7 +139,7 @@ def main():
     parser.add_argument("--base_template", type=str, required=False, help='path of base model template')
     parser.add_argument("--logdir", type=str, default="checkpoints",required=False, help='path of tensorboard logger')
     parser.add_argument("--name", type=str,required=True, help='name to save_model')
-    parser.add_argument("--neg_penalty", type=float,required=False, default=1e-7, help='penalty for negative value in the base vector')
+    parser.add_argument("--neg_penalty", type=float,required=False, default=1e-2, help='penalty for negative value in the base vector')
     args = parser.parse_args()
 
     # Tensorboard logger

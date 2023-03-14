@@ -32,15 +32,11 @@ def init_biased_mask(n_head, max_seq_len, period):
     return mask
 
 # Alignment Bias
-def enc_dec_mask(device, dataset, T, S):
+def enc_dec_mask(T, S):
     mask = torch.ones(T, S)
-    if dataset == "BIWI":
-        for i in range(T):
-            mask[i, i*2:i*2+2] = 0
-    elif dataset == "vocaset":
-        for i in range(T):
-            mask[i, i] = 0
-    return (mask==1).to(device=device)
+    for i in range(T):
+        mask[i, i] = 0
+    return (mask==1).cuda()
 
 def get_base_dec_func(base_models):
     def transformer(base_vec):
@@ -75,7 +71,6 @@ class Faceformer(nn.Module):
         """
         self.base_models = None
 
-        self.dataset = args.dataset
         self.audio_encoder = Wav2Vec2Model.from_pretrained("./facebook/wav2vec")
         # wav2vec 2.0 weights initialization
         self.audio_encoder.feature_extractor._freeze_parameters()
@@ -91,20 +86,8 @@ class Faceformer(nn.Module):
         # motion decoder
         self.vertice_map_r = nn.Linear(args.feature_dim, args.vertice_dim)
         
-        # style embedding
-        self.obj_vector = nn.Linear(len(args.train_subjects.split()), args.feature_dim, bias=False)
-        self.device = args.device
-        
-
-        # base 
-        if args.base_model_path is not None:
-            self.base_template = torch.tensor(load_vertices(args.base_template, scale=1./100), dtype=torch.float)
-            self.base_models = torch.tensor(load_base_model(args.base_model_path, scale=1./100), dtype=torch.float) - self.base_template
-            self.base_models = self.base_models.reshape(self.base_models.size(0), -1)
-            self.device_base_models = self.base_models.clone().to(self.device)
-            self.base_map_r = nn.Linear(args.feature_dim, self.base_models.shape[0])
-            self.activation_func = nn.LeakyReLU(negative_slope=args.neg_penalty)
-            # self.activation_func = nn.Tanh()
+        self.activation_func = nn.LeakyReLU(negative_slope=args.neg_penalty)
+        self.start_vec = torch.zeros(1, 1, args.feature_dim)
 
         
         # TODO: Wether initialize the base_map_r
@@ -112,62 +95,38 @@ class Faceformer(nn.Module):
         nn.init.constant_(self.vertice_map_r.bias, 0)
 
 
-    def forward(self, audio, template, vertice, one_hot, criterion, writer = None, global_step=None,teacher_forcing=True):
+    def forward(self, audio, vertice, template, criterion, teacher_forcing=True):
         # tgt_mask: :math:`(T, T)`.
         # memory_mask: :math:`(T, S)`.
         template = template.unsqueeze(1) # (1,1, V*3)
-        obj_embedding = self.obj_vector(one_hot)#(1, feature_dim)
         frame_num = vertice.shape[1]
-        hidden_states = self.audio_encoder(audio, self.dataset, frame_num=frame_num).last_hidden_state
-        if self.dataset == "BIWI":
-            if hidden_states.shape[1]<frame_num*2:
-                vertice = vertice[:, :hidden_states.shape[1]//2]
-                frame_num = hidden_states.shape[1]//2
+        hidden_states = self.audio_encoder(audio, frame_num=frame_num).last_hidden_state
         hidden_states = self.audio_feature_map(hidden_states)
 
-        negative_penalty = torch.tensor(0., device=self.device)
+        negative_penalty = torch.tensor(0.).cuda()
 
         if teacher_forcing:
-            vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
-            style_emb = vertice_emb  
             vertice_input = torch.cat((template,vertice[:,:-1]), 1) # shift one position
             vertice_input = vertice_input - template
             vertice_input = self.vertice_map(vertice_input)
-            vertice_input = vertice_input + style_emb
             vertice_input = self.PPE(vertice_input)
-            tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().to(device=self.device)
-            memory_mask = enc_dec_mask(self.device, self.dataset, vertice_input.shape[1], hidden_states.shape[1])
+            tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
+            memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1])
             vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
-            if self.base_models is not None:
-                vertice_out = self.base_map_r(vertice_out)
-                vertice_out = self.activation_func(vertice_out)
-                negative_penalty = negative_penalty + torch.sum(vertice_out[vertice_out<0])
-                # print("Matmuling |", vertice_out.shape, self.base_models.shape)
-                vertice_out = vertice_out @ self.device_base_models
-            else:
-                vertice_out = self.vertice_map_r(vertice_out)
+            vertice_out = self.vertice_map_r(vertice_out)
         else:
             for i in range(frame_num):
                 if i==0:
-                    vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
-                    style_emb = vertice_emb
-                    vertice_input = self.PPE(style_emb)
+                    vertice_emb = self.start_vec.clone().detach().cuda()
+                    vertice_input = self.PPE(vertice_emb)
                 else:
                     vertice_input = self.PPE(vertice_emb)
-                tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().to(device=self.device)
-                memory_mask = enc_dec_mask(self.device, self.dataset, vertice_input.shape[1], hidden_states.shape[1])
+                tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
+                memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1])
                 vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
-                if self.base_models is not None:
-                    vertice_out = self.base_map_r(vertice_out)
-                    vertice_out = self.activation_func(vertice_out)
-                    negative_penalty = negative_penalty + torch.sum(vertice_out[vertice_out<0])
-                    # print("Matmuling |", vertice_out.shape, self.base_models.shape)
-                    vertice_out = vertice_out @ self.device_base_models
-                else:
-                    vertice_out = self.vertice_map_r(vertice_out)
-                
+                vertice_out = self.vertice_map_r(vertice_out)
+
                 new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
-                new_output = new_output + style_emb
                 vertice_emb = torch.cat((vertice_emb, new_output), 1)
 
         vertice_out = vertice_out + template
@@ -177,20 +136,19 @@ class Faceformer(nn.Module):
             loss = criterion(vertice_out, vertice) # penalty for negative base
         else:
             loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
-        if writer is not None:
-            writer.add_scalar("loss/deviation", torch.mean(loss).item(), global_step=global_step)
-            writer.add_scalar("loss/negative_penalty", negative_penalty.item(), global_step=global_step)
-        loss = torch.mean(loss) - negative_penalty
-        return loss
+        
+        total_loss = torch.mean(loss) - negative_penalty
+        losses = {
+            'total_loss': total_loss,
+            'negative_penalty': negative_penalty,
+        }
+        return losses
 
     def predict(self, audio, template, one_hot, base_only = False):
         template = template.unsqueeze(1) # (1,1, V*3)
         obj_embedding = self.obj_vector(one_hot)
-        hidden_states = self.audio_encoder(audio, self.dataset).last_hidden_state
-        if self.dataset == "BIWI":
-            frame_num = hidden_states.shape[1]//2
-        elif self.dataset == "vocaset":
-            frame_num = hidden_states.shape[1]
+        hidden_states = self.audio_encoder(audio).last_hidden_state
+        frame_num = hidden_states.shape[1]
         hidden_states = self.audio_feature_map(hidden_states)
         base_vec_arr = []
 
@@ -203,8 +161,8 @@ class Faceformer(nn.Module):
             else:
                 vertice_input = self.PPE(vertice_emb)
 
-            tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().to(device=self.device)
-            memory_mask = enc_dec_mask(self.device, self.dataset, vertice_input.shape[1], hidden_states.shape[1])
+            tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
+            memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1])
             vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
             if self.base_models is not None:
                 vertice_out = self.base_map_r(vertice_out)
@@ -235,3 +193,7 @@ class Faceformer(nn.Module):
         else:
             vertice_out = vertice_out + template
             return vertice_out
+
+def create_model(opt):
+    model = Faceformer(opt)
+    return model

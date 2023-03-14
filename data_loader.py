@@ -1,4 +1,5 @@
 import os
+import glob
 import torch
 from collections import defaultdict
 from torch.utils import data
@@ -11,7 +12,7 @@ from transformers import Wav2Vec2FeatureExtractor,Wav2Vec2Processor
 from psbody.mesh import Mesh
 import librosa    
 
-class Dataset(data.Dataset):
+class VocaDataset(data.Dataset):
     """Custom data.Dataset compatible with data.DataLoader."""
     def __init__(self, data,subjects_dict,data_type="train"):
         self.data = data
@@ -52,9 +53,13 @@ def read_data(args):
     with open(template_file, 'rb') as fin:
         templates = pickle.load(fin,encoding='latin1')
     
+    count = 0
     for r, ds, fs in os.walk(audio_path):
         for f in tqdm(fs):
             if f.endswith("wav"):
+                count += 1
+                if count == 10:
+                    break
                 wav_path = os.path.join(r,f)
                 speech_array, sampling_rate = librosa.load(wav_path, sr=16000)
                 input_values = np.squeeze(processor(speech_array,sampling_rate=16000).input_values)
@@ -102,11 +107,11 @@ def read_data(args):
 def get_dataloaders(args):
     dataset = {}
     train_data, valid_data, test_data, subjects_dict = read_data(args) # dataset | dict of three array: indicate 3 parts of subjects
-    train_data = Dataset(train_data,subjects_dict,"train")
+    train_data = VocaDataset(train_data,subjects_dict,"train")
     dataset["train"] = data.DataLoader(dataset=train_data, batch_size=1, shuffle=True)
-    valid_data = Dataset(valid_data,subjects_dict,"val")
+    valid_data = VocaDataset(valid_data,subjects_dict,"val")
     dataset["valid"] = data.DataLoader(dataset=valid_data, batch_size=1, shuffle=False)
-    test_data = Dataset(test_data,subjects_dict,"test")
+    test_data = VocaDataset(test_data,subjects_dict,"test")
     dataset["test"] = data.DataLoader(dataset=test_data, batch_size=1, shuffle=False)
     return dataset
 
@@ -124,6 +129,68 @@ def load_base_model(path, scale = 1):
         meshes.append(load_vertices(filename, scale=scale))
     return meshes
 
-if __name__ == "__main__":
-    get_dataloaders()
+class NPFADataset(data.Dataset):
+    """Custom data.Dataset compatible with data.DataLoader."""
+    def __init__(self, opt):
+        self.phase_data_root = os.path.join(opt.dataroot, opt.phase)
+        self.vertice_dim = opt.vertice_dim
+        self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+
+        # Check if data path exists
+        if not os.path.exists(self.phase_data_root):
+            raise Exception("Data path does not exist: {}".format(self.phase_data_root))
+        
+        # Find all data files
+        self.data_dirs = list(sorted(glob.glob(os.path.join(self.phase_data_root, "*/*.wav"))))
+
+        # Check if data exists
+        if len(self.data_dirs) == 0:
+            raise Exception("No data found in: {}".format(self.phase_data_root))
+
+        # Get the directory name of each data file
+        self.data_dirs = list(set(map(lambda filepath: os.path.dirname(filepath), self.data_dirs)))
+
+        # Load data to memory
+        self.data = []
+        for data_dir in tqdm(self.data_dirs, desc='Loading data'):
+            wav_path = os.path.join(data_dir, "audio.wav")
+            speech_array, sampling_rate = librosa.load(wav_path, sr=16000)
+            wav_data = torch.FloatTensor(np.squeeze(self.processor(speech_array,sampling_rate=16000).input_values))
+            
+            vertices_30fps_dirs = list(sorted(glob.glob(os.path.join(data_dir, '*/mesh_pred_all_vs_30fps.npy'))))
+            vertices_60fps_dirs = list(sorted(glob.glob(os.path.join(data_dir, '*/mesh_pred_all_vs_60fps.npy'))))
+            if len(vertices_30fps_dirs) + len(vertices_60fps_dirs) == 0:
+                raise Exception("Find empty data directory at {}".format(data_dir))
+
+            for vertices_dir in vertices_30fps_dirs + vertices_60fps_dirs:
+                # Load vertices
+                vertices_data = torch.FloatTensor(np.load(vertices_dir)).flatten(1) # (frame_num, 14062 * 3)
+                # Skip every other frame if the fps is 60
+                if "60fps" in os.path.basename(vertices_dir):
+                    vertices_data = vertices_data[::2] 
+                # Check if the number of vertices is correct
+                if vertices_data.shape[1] != self.vertice_dim:
+                    raise Exception(f"Number of vertices in {vertices_dir} is not correct, expect {self.vertice_dim}, but read {vertices_data.shape[1]}")
+
+                # Load template
+                identity_name = os.path.basename(os.path.dirname(vertices_dir))
+                identity_dir = os.path.join(opt.dataroot, 'identity', identity_name + ".npy")
+                # Check if the template exists
+                if not os.path.exists(identity_dir):
+                    raise Exception(f"Identity template {identity_dir} does not exist")
+                identity_neutral = torch.FloatTensor(np.load(identity_dir)[0]).flatten(0) # (14062 * 3,)
+
+                vertices_data = vertices_data - identity_neutral
+                data_item = {
+                    'audio'   : wav_data.unsqueeze(0),
+                    'vertice' : vertices_data.unsqueeze(0),
+                    'template': identity_neutral.unsqueeze(0),
+                }
+                self.data.append(data_item)
     
+    def __getitem__(self, index):
+        return self.data[index]
+        
+    
+    def __len__(self):
+        return len(self.data)

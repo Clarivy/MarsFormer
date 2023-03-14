@@ -4,16 +4,17 @@ import numpy as np
 import torch
 from zlw import align_vertices
 
-ceo_neutral = Mesh(filename='/data/new_disk/pangbai/FaceFormer/FaceFormer/output_neutral.obj').v[:3931]
+# ceo_neutral = Mesh(filename='/data/new_disk/pangbai/FaceFormer/FaceFormer/output_neutral.obj').v[:3931]
 
 raw_template = Mesh(filename = "/data/new_disk/pangbai/FaceFormer/FaceFormer/data/000_generic_neutral_mesh.obj")
 template = raw_template.v / 100
 models = torch.tensor(load_base_model("./data/FLAME", scale=1/100)) - template
-frames = torch.tensor(np.load("/data/new_disk/pangbai/FaceFormer/FaceFormer/demo/result/trim2.npy"))
+# frames = torch.tensor(np.load("/data/new_disk/pangbai/FaceFormer/FaceFormer/demo/result/trim2.npy"))
+frames = torch.tensor(np.load("/data/new_disk/pangbai/FaceFormer/FaceFormer/vocaset/result/FaceTalk_170731_00024_TA_sentence21_condition_FaceTalk_170725_00137_TA.npy"))
 
-_, R, T, coef = align_vertices(template, ceo_neutral, scale=True)
-models *= coef
-template *= coef
+# _, R, T, coef = align_vertices(template, ceo_neutral, scale=True)
+# models *= coef
+# template *= coef
 
 for index, frame in enumerate(frames):
     print(f"Processing {index}")

@@ -5,20 +5,26 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Outside of my code",
+            "name": "Python: Debug train",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
+            "program": "train.py",
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": true,
+            "args": [
+                "--name", "test",
+                "--gpu_id", "0",
+                "--dataroot", "./data/GNPFA/",
+                "--tf_log"
+            ]
         },
         {
-            "name": "Python: Debug train",
+            "name": "Python: Debug Previous train",
             "type": "python",
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal",
-            "justMyCode": true,
+            "justMyCode": false,
             "args": [
                 "--dataset",
                 "vocaset",
@@ -29,7 +35,9 @@
                 "--base_model_path",
                 "./data/FLAME",
                 "--base_template",
-                "./data/000_generic_neutral_mesh.obj"
+                "./data/000_generic_neutral_mesh.obj",
+                "--name",
+                "debug"
             ]
         },
         {
@@ -40,18 +48,30 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--model_name", "vocaset",
-                "--wav_path", "demo/wav/trim2.wav",
-                "--dataset", "vocaset",
-                "--vertice_dim", "11793",
-                "--feature_dim", "64",
-                "--period", "30",
-                "--fps", "30",
-                "--base_model_path", "./data/FLAME",
-                "--base_template", "./data/000_generic_neutral_mesh.obj",
-                "--condition", "FaceTalk_170913_03279_TA",
-                "--subject", "FaceTalk_170809_00138_TA",
-                "--model_path", "./vocaset/save/15_model.pth"
+                "--model_name",
+                "vocaset",
+                "--wav_path",
+                "demo/wav/trim2.wav",
+                "--dataset",
+                "vocaset",
+                "--vertice_dim",
+                "11793",
+                "--feature_dim",
+                "64",
+                "--period",
+                "30",
+                "--fps",
+                "30",
+                "--base_model_path",
+                "./data/FLAME",
+                "--base_template",
+                "./data/000_generic_neutral_mesh.obj",
+                "--condition",
+                "FaceTalk_170913_03279_TA",
+                "--subject",
+                "FaceTalk_170809_00138_TA",
+                "--model_path",
+                "./vocaset/save/15_model.pth"
             ]
         }
     ]

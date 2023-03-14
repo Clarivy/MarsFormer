@@ -62,7 +62,7 @@ class PeriodicPositionalEncoding(nn.Module):
         return self.dropout(x)
 
 class Faceformer(nn.Module):
-    def __init__(self, args):
+    def __init__(self, opt, subject_num = None):
         super(Faceformer, self).__init__()
         """
         audio: (batch_size, raw_wav)
@@ -74,20 +74,24 @@ class Faceformer(nn.Module):
         self.audio_encoder = Wav2Vec2Model.from_pretrained("./facebook/wav2vec")
         # wav2vec 2.0 weights initialization
         self.audio_encoder.feature_extractor._freeze_parameters()
-        self.audio_feature_map = nn.Linear(768, args.feature_dim)
+        self.audio_feature_map = nn.Linear(768, opt.feature_dim)
         # motion encoder
-        self.vertice_map = nn.Linear(args.vertice_dim, args.feature_dim)
+        self.vertice_map = nn.Linear(opt.vertice_dim, opt.feature_dim)
         # periodic positional encoding 
-        self.PPE = PeriodicPositionalEncoding(args.feature_dim, period = args.period)
+        self.PPE = PeriodicPositionalEncoding(opt.feature_dim, period = opt.period, max_seq_len=opt.max_len)
         # temporal bias
-        self.biased_mask = init_biased_mask(n_head = 4, max_seq_len = 600, period=args.period)
-        decoder_layer = nn.TransformerDecoderLayer(d_model=args.feature_dim, nhead=4, dim_feedforward=2*args.feature_dim, batch_first=True)        
+        self.biased_mask = init_biased_mask(n_head = 4, max_seq_len = opt.max_len, period=opt.period)
+        decoder_layer = nn.TransformerDecoderLayer(d_model=opt.feature_dim, nhead=4, dim_feedforward=2*opt.feature_dim, batch_first=True)        
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=1)
         # motion decoder
-        self.vertice_map_r = nn.Linear(args.feature_dim, args.vertice_dim)
+        self.vertice_map_r = nn.Linear(opt.feature_dim, opt.vertice_dim)
         
-        self.activation_func = nn.LeakyReLU(negative_slope=args.neg_penalty)
-        self.start_vec = torch.zeros(1, 1, args.feature_dim)
+        # encoding the template
+        if subject_num is None:
+            self.obj_vector = nn.Linear(len(opt.train_subjects), opt.feature_dim, bias=False)
+        else:
+            self.obj_vector = nn.Linear(subject_num, opt.feature_dim, bias=False)
+        self.activation_func = nn.LeakyReLU(negative_slope=opt.neg_penalty)
 
         
         # TODO: Wether initialize the base_map_r
@@ -95,47 +99,35 @@ class Faceformer(nn.Module):
         nn.init.constant_(self.vertice_map_r.bias, 0)
 
 
-    def forward(self, audio, vertice, template, criterion, teacher_forcing=True):
+    def forward(self, audio, vertice, template, one_hot, criterion):
         # tgt_mask: :math:`(T, T)`.
         # memory_mask: :math:`(T, S)`.
         template = template.unsqueeze(1) # (1,1, V*3)
         frame_num = vertice.shape[1]
+        obj_embedding = self.obj_vector(one_hot)
         hidden_states = self.audio_encoder(audio, frame_num=frame_num).last_hidden_state
         hidden_states = self.audio_feature_map(hidden_states)
 
         negative_penalty = torch.tensor(0.).cuda()
 
-        if teacher_forcing:
-            vertice_input = torch.cat((template,vertice[:,:-1]), 1) # shift one position
-            vertice_input = vertice_input - template
-            vertice_input = self.vertice_map(vertice_input)
-            vertice_input = self.PPE(vertice_input)
+        for i in range(frame_num):
+            if i==0:
+                vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
+                style_emb = vertice_emb
+                vertice_input = self.PPE(style_emb)
+            else:
+                vertice_input = self.PPE(vertice_emb)
             tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
             memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1])
             vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
             vertice_out = self.vertice_map_r(vertice_out)
-        else:
-            for i in range(frame_num):
-                if i==0:
-                    vertice_emb = self.start_vec.clone().detach().cuda()
-                    vertice_input = self.PPE(vertice_emb)
-                else:
-                    vertice_input = self.PPE(vertice_emb)
-                tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
-                memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1])
-                vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
-                vertice_out = self.vertice_map_r(vertice_out)
-
-                new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
-                vertice_emb = torch.cat((vertice_emb, new_output), 1)
+            new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
+            new_output = new_output + style_emb
+            vertice_emb = torch.cat((vertice_emb, new_output), 1)
 
         vertice_out = vertice_out + template
         # print(vertice_out.shape) # 1 * n * 15069
-        if self.base_models is not None:
-            # vertice_out is (batch, seq_len, V*3) 
-            loss = criterion(vertice_out, vertice) # penalty for negative base
-        else:
-            loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
+        loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
         
         total_loss = torch.mean(loss) - negative_penalty
         losses = {
@@ -194,6 +186,6 @@ class Faceformer(nn.Module):
             vertice_out = vertice_out + template
             return vertice_out
 
-def create_model(opt):
-    model = Faceformer(opt)
+def create_model(opt, subject_num):
+    model = Faceformer(opt, subject_num=subject_num)
     return model

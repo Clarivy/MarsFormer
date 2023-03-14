@@ -39,7 +39,7 @@ print_delta = total_steps % opt.print_freq
 save_delta = total_steps % opt.save_latest_freq
 
 
-model = create_model(opt).cuda()
+model = create_model(opt, subject_num=dataset.identity_num).cuda()
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad,model.parameters()), lr=opt.lr)
 visualizer = Visualizer(opt)
@@ -55,11 +55,11 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
         epoch_iter += 1
 
         # collect input data from data loader
-        audio, vertice, template = data['audio'], data['vertice'], data['template']
-        audio, vertice, template = audio.cuda(), vertice.cuda(), template.cuda()
+        audio, vertice, template, one_hot = data['audio'], data['vertice'], data['template'], data['one_hot']
+        audio, vertice, template, one_hot = audio.cuda(), vertice.cuda(), template.cuda(), one_hot.cuda()
 
         ############## Forward Pass ######################
-        losses = model(audio, vertice, template, criterion, teacher_forcing = False)
+        losses = model(audio, vertice, template, one_hot, criterion)
 
         ############### Backward Pass ####################
         losses['total_loss'].backward()

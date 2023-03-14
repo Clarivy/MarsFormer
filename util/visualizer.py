@@ -8,12 +8,10 @@ from psbody.mesh import Mesh
 class Visualizer():
     def __init__(self, opt):
         # self.opt = opt
-        self.tf_log = opt.tf_log
         self.name = opt.name
-        if self.tf_log:
-            from tensorboardX import SummaryWriter
-            self.log_dir = os.path.join(opt.checkpoints_dir, opt.name, 'logs')
-            self.writer = SummaryWriter(log_dir=self.log_dir)
+        from tensorboardX import SummaryWriter
+        self.log_dir = os.path.join(opt.checkpoints_dir, opt.name, 'logs')
+        self.writer = SummaryWriter(log_dir=self.log_dir)
 
         self.frame_visualizer = FrameVisulizer(opt.template_path)
 
@@ -25,13 +23,26 @@ class Visualizer():
 
     # errors: dictionary of error labels and values
     def plot_current_errors(self, errors, step):
-        if self.tf_log:
-            for tag, value in errors.items():
-                self.writer.add_scalar(tag, value, step)
+        for tag, value in errors.items():
+            self.writer.add_scalar(tag, value, step)
 
     # errors: same format as |errors| of plotCurrentErrors
     def print_current_errors(self, epoch, i, errors, t):
         message = '(epoch: %d, iters: %d, time: %.3f) ' % (epoch, i, t)
+        for k, v in errors.items():
+            if v != 0:
+                message += '%s: %.3f ' % (k, v)
+
+        print(message)
+        with open(self.log_name, "a") as log_file:
+            log_file.write('%s\n' % message)
+    
+    def plot_valid_errors(self, errors, epoch):
+        for tag, value in errors.items():
+            self.writer.add_scalar("valid/" + tag, value, epoch)
+    
+    def print_valid_errors(self, errors, epoch):
+        message = f'Validation at epoch {epoch}: '
         for k, v in errors.items():
             if v != 0:
                 message += '%s: %.3f ' % (k, v)

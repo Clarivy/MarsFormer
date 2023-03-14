@@ -64,6 +64,7 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
         ############### Backward Pass ####################
         losses['total_loss'].backward()
         optimizer.step()
+        optimizer.zero_grad()
 
 
         ############## Display results and errors ##########
@@ -95,3 +96,5 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
         util.save_model(model, model_save_dir, 'latest')
         util.save_model(model, model_save_dir, str(epoch))
         np.savetxt(iter_path, (epoch+1, 0), delimiter=',', fmt='%d')
+    
+    ### valid

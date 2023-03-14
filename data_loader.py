@@ -11,6 +11,7 @@ import random,math
 from transformers import Wav2Vec2FeatureExtractor,Wav2Vec2Processor
 from psbody.mesh import Mesh
 import librosa    
+from pathlib import Path
 
 class VocaDataset(data.Dataset):
     """Custom data.Dataset compatible with data.DataLoader."""
@@ -132,9 +133,19 @@ def load_base_model(path, scale = 1):
 class NPFADataset(data.Dataset):
     """Custom data.Dataset compatible with data.DataLoader."""
     def __init__(self, opt):
+        self.max_len = opt.max_len
         self.phase_data_root = os.path.join(opt.dataroot, opt.phase)
         self.vertice_dim = opt.vertice_dim
         self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+
+        def use_identity(identity_name):
+            if opt.phase == 'train' and identity_name in opt.train_subjects:
+                return True
+            if opt.phase == 'valid' and identity_name in opt.valid_subjects:
+                return True
+            if opt.phase == 'debug':
+                return True
+            return False
 
         # Check if data path exists
         if not os.path.exists(self.phase_data_root):
@@ -150,9 +161,28 @@ class NPFADataset(data.Dataset):
         # Get the directory name of each data file
         self.data_dirs = list(set(map(lambda filepath: os.path.dirname(filepath), self.data_dirs)))
 
+        # Load identities
+        self.identity_dict = {}
+        self.identity_dirs = list(sorted(glob.glob(os.path.join(opt.dataroot, 'identity', '*.npy'))))  
+        if len(self.identity_dirs) == 0:
+            raise Exception("No identities found in: {}".format(opt.dara_root))
+        identity_count = 0
+        for identity_dir in self.identity_dirs:
+            identity_name = Path(os.path.basename(identity_dir)).stem
+            if use_identity(identity_name):
+                self.identity_dict[identity_name] = (
+                    identity_count,
+                    torch.FloatTensor(np.load(identity_dir)[0]).flatten(0), # (14062 * 3,)
+                )
+                identity_count += 1
+        if identity_count == 0:
+            raise Exception("No identities found for {} mode in: {}".format(opt.phase, opt.dara_root))
+        self.one_hot_labels = torch.eye(identity_count, dtype=torch.float) # (num_identities, num_identities)
+
         # Load data to memory
         self.data = []
         for data_dir in tqdm(self.data_dirs, desc='Loading data'):
+            # Load audio
             wav_path = os.path.join(data_dir, "audio.wav")
             speech_array, sampling_rate = librosa.load(wav_path, sr=16000)
             wav_data = torch.FloatTensor(np.squeeze(self.processor(speech_array,sampling_rate=16000).input_values))
@@ -163,6 +193,12 @@ class NPFADataset(data.Dataset):
                 raise Exception("Find empty data directory at {}".format(data_dir))
 
             for vertices_dir in vertices_30fps_dirs + vertices_60fps_dirs:
+                # Load template
+                identity_name = os.path.basename(os.path.dirname(vertices_dir))
+                if self.identity_dict.get(identity_name) is None:
+                    continue
+                identity_index, identity_neutral = self.identity_dict[identity_name]
+
                 # Load vertices
                 vertices_data = torch.FloatTensor(np.load(vertices_dir)).flatten(1) # (frame_num, 14062 * 3)
                 # Skip every other frame if the fps is 60
@@ -172,25 +208,31 @@ class NPFADataset(data.Dataset):
                 if vertices_data.shape[1] != self.vertice_dim:
                     raise Exception(f"Number of vertices in {vertices_dir} is not correct, expect {self.vertice_dim}, but read {vertices_data.shape[1]}")
 
-                # Load template
-                identity_name = os.path.basename(os.path.dirname(vertices_dir))
-                identity_dir = os.path.join(opt.dataroot, 'identity', identity_name + ".npy")
-                # Check if the template exists
-                if not os.path.exists(identity_dir):
-                    raise Exception(f"Identity template {identity_dir} does not exist")
-                identity_neutral = torch.FloatTensor(np.load(identity_dir)[0]).flatten(0) # (14062 * 3,)
-
-                vertices_data = vertices_data - identity_neutral
+                # vertices_data = (vertices_data - identity_neutral).clone.detach()
                 data_item = {
                     'audio'   : wav_data.unsqueeze(0),
                     'vertice' : vertices_data.unsqueeze(0),
                     'template': identity_neutral.unsqueeze(0),
+                    'one_hot' : self.one_hot_labels[identity_index].unsqueeze(0),
                 }
                 self.data.append(data_item)
     
     def __getitem__(self, index):
+        # Clip long audio and vertice
+        frame_num = self.data[index]['vertice'].shape[1]
+        if frame_num > self.max_len:
+            start = random.randint(0, frame_num - self.max_len)
+            return {
+                'audio'   : self.data[index]['audio'][:,start:start+self.max_len],
+                'vertice' : self.data[index]['vertice'][:,start:start+self.max_len],
+                'template': self.data[index]['template'],
+                'one_hot' : self.data[index]['one_hot'],
+            }
         return self.data[index]
-        
+    
+    @property
+    def identity_num(self):
+        return len(self.identity_dict)
     
     def __len__(self):
         return len(self.data)

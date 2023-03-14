@@ -39,7 +39,7 @@ print_delta = total_steps % opt.print_freq
 save_delta = total_steps % opt.save_latest_freq
 
 
-model = create_model(opt, subject_num=dataset.identity_num).cuda()
+model = create_model(opt).cuda()
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad,model.parameters()), lr=opt.lr)
 visualizer = Visualizer(opt)

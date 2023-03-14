@@ -134,6 +134,7 @@ class NPFADataset(data.Dataset):
     """Custom data.Dataset compatible with data.DataLoader."""
     def __init__(self, opt):
         self.max_len = opt.max_len
+        self.isTrain = opt.isTrain
         self.phase_data_root = os.path.join(opt.dataroot, opt.phase)
         self.vertice_dim = opt.vertice_dim
         self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
@@ -222,8 +223,10 @@ class NPFADataset(data.Dataset):
         # Clip long audio and vertice
         frame_num = self.data[index]['vertice'].shape[1]
         if frame_num > self.max_len:
-            start = random.randint(0, frame_num - self.max_len)
-            # start = 0
+            if self.isTrain:
+                start = random.randint(0, frame_num - self.max_len)
+            else:
+                start = 0
             clipped_vertice, clipped_audio = NPFADataset.clip(
                 self.data[index]['vertice'],
                 start,

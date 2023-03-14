@@ -17,7 +17,7 @@ opt = ValidOptions().parse(save=False)
 
 dataset = NPFADataset(opt)
 visualizer = Visualizer(opt)
-model = create_model(opt, subject_num=dataset.identity_num).cuda()
+model = create_model(opt).cuda()
 
 # test
 for i, data in enumerate(dataset):

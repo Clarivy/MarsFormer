@@ -222,6 +222,7 @@ class NPFADataset(data.Dataset):
         frame_num = self.data[index]['vertice'].shape[1]
         if frame_num > self.max_len:
             start = random.randint(0, frame_num - self.max_len)
+            # start = 0
             clipped_vertice, clipped_audio = NPFADataset.clip(
                 self.data[index]['vertice'],
                 start,

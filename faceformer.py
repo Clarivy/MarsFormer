@@ -62,7 +62,7 @@ class PeriodicPositionalEncoding(nn.Module):
         return self.dropout(x)
 
 class Faceformer(nn.Module):
-    def __init__(self, opt, subject_num = None):
+    def __init__(self, opt):
         super(Faceformer, self).__init__()
         """
         audio: (batch_size, raw_wav)
@@ -87,10 +87,7 @@ class Faceformer(nn.Module):
         self.vertice_map_r = nn.Linear(opt.feature_dim, opt.vertice_dim)
         
         # encoding the template
-        if subject_num is None:
-            self.obj_vector = nn.Linear(len(opt.train_subjects), opt.feature_dim, bias=False)
-        else:
-            self.obj_vector = nn.Linear(subject_num, opt.feature_dim, bias=False)
+        self.obj_vector = nn.Linear(len(opt.train_subjects), opt.feature_dim, bias=False)
         self.activation_func = nn.LeakyReLU(negative_slope=opt.neg_penalty)
 
         
@@ -162,6 +159,6 @@ class Faceformer(nn.Module):
         vertice_out = vertice_out + template
         return vertice_out
 
-def create_model(opt, subject_num):
-    model = Faceformer(opt, subject_num=subject_num)
+def create_model(opt):
+    model = Faceformer(opt)
     return model

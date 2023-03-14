@@ -35,8 +35,7 @@ def init_biased_mask(n_head, max_seq_len, period):
 # Alignment Bias
 def enc_dec_mask(T, S):
     mask = torch.ones(T, S)
-    for i in range(T):
-        mask[i, i] = 0
+    mask.fill_diagonal_(0)
     return (mask==1).cuda()
 
 def get_base_dec_func(base_models):

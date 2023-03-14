@@ -14,7 +14,7 @@ class BaseOptions():
         self.parser.add_argument('--gpu_id', type=str, default='0')
         self.parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
         self.parser.add_argument('--model', type=str, default='pix2pixHD', help='which model to use')
-        self.parser.add_argument('--norm', type=str, default='instance', help='instance normalization or batch normalization')        
+        self.parser.add_argument('--template_path', type=str, default='data/USC_neutral.obj', help='instance normalization or batch normalization')        
         self.parser.add_argument('--verbose', action='store_true', default=False, help='toggles verbose')
 
         # input/output sizes       

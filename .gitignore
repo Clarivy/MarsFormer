@@ -136,4 +136,5 @@ demo/
 data/
 vis/
 checkpoints/
+checkpoints_old/
 facebook/

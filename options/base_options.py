@@ -1,6 +1,7 @@
 import argparse
 import os
 from util import util
+import numpy as np
 import torch
 
 class BaseOptions():
@@ -26,6 +27,7 @@ class BaseOptions():
 
         # for setting inputs
         self.parser.add_argument('--dataroot', type=str, default='./data/GNPFA/') 
+        self.parser.add_argument('--facial_mask', type=str, required=False) 
 
         # for dataset dividing
         self.parser.add_argument("--train_subjects", type=str, default=
@@ -73,4 +75,14 @@ class BaseOptions():
                 for k, v in sorted(args.items()):
                     opt_file.write('%s: %s\n' % (str(k), str(v)))
                 opt_file.write('-------------- End ----------------\n')
+        
+        if self.opt.facial_mask != None:
+            self.opt.facial_mask = np.loadtxt(self.opt.facial_mask, dtype=int)
+            self.opt.nonfacial_mask = torch.tensor(
+                np.delete(
+                    np.arange(self.opt.vertice_dim // 3),
+                    self.opt.facial_mask
+                )
+            )
+        
         return self.opt

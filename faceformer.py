@@ -70,13 +70,17 @@ class Faceformer(nn.Module):
         vertice: (batch_size, seq_len, V*3)
         """
         self.base_models = None
+        if opt.facial_mask != None:
+            self.facial_mask = opt.facial_mask
+            self.nonfacial_mask = opt.nonfacial_mask
+        self.vertice_dim = opt.vertice_dim
 
         self.audio_encoder = Wav2Vec2Model.from_pretrained("./facebook/wav2vec")
         # wav2vec 2.0 weights initialization
         self.audio_encoder.feature_extractor._freeze_parameters()
         self.audio_feature_map = nn.Linear(768, opt.feature_dim)
         # motion encoder
-        self.vertice_map = nn.Linear(opt.vertice_dim, opt.feature_dim)
+        self.vertice_map = nn.Linear(self.vertice_dim, opt.feature_dim)
         # periodic positional encoding 
         self.PPE = PeriodicPositionalEncoding(opt.feature_dim, period = opt.period, max_seq_len=opt.max_len)
         # temporal bias
@@ -84,7 +88,7 @@ class Faceformer(nn.Module):
         decoder_layer = nn.TransformerDecoderLayer(d_model=opt.feature_dim, nhead=4, dim_feedforward=2*opt.feature_dim, batch_first=True)        
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=1)
         # motion decoder
-        self.vertice_map_r = nn.Linear(opt.feature_dim, opt.vertice_dim)
+        self.vertice_map_r = nn.Linear(opt.feature_dim, self.vertice_dim)
         
         # encoding the template
         self.obj_vector = nn.Linear(len(opt.train_subjects), opt.feature_dim, bias=False)
@@ -122,6 +126,8 @@ class Faceformer(nn.Module):
             vertice_emb = torch.cat((vertice_emb, new_output), 1)
 
         vertice_out = vertice_out + template
+        vertice_out = self.get_facial_area(vertice_out)
+        vertice = self.get_facial_area(vertice)
         # print(vertice_out.shape) # 1 * n * 15069
         loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
         
@@ -157,6 +163,13 @@ class Faceformer(nn.Module):
 
         vertice_out = vertice_out + template
         return vertice_out
+    
+    def get_facial_area(self, vertice: torch.Tensor):
+        if self.facial_mask == None:
+            return vertice
+        return vertice.view(1, -1, 3)[:, self.facial_mask, :].flatten(1)
+        
+        
 
 def create_model(opt):
     model = Faceformer(opt)

@@ -70,9 +70,11 @@ class Faceformer(nn.Module):
         vertice: (batch_size, seq_len, V*3)
         """
         self.base_models = None
-        if opt.facial_mask != None:
+        if opt.facial_mask is not None:
             self.facial_mask = opt.facial_mask
             self.nonfacial_mask = opt.nonfacial_mask
+        else:
+            self.facial_mask = None
         self.vertice_dim = opt.vertice_dim
 
         self.audio_encoder = Wav2Vec2Model.from_pretrained("./facebook/wav2vec")

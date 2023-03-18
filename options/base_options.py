@@ -14,7 +14,6 @@ class BaseOptions():
         self.parser.add_argument('--name', type=str, default='label2city', help='name of the experiment. It decides where to store samples and models')        
         self.parser.add_argument('--gpu_id', type=str, default='0')
         self.parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
-        self.parser.add_argument('--model', type=str, default='pix2pixHD', help='which model to use')
         self.parser.add_argument('--template_path', type=str, default='data/USC_neutral.obj', help='instance normalization or batch normalization')        
         self.parser.add_argument('--verbose', action='store_true', default=False, help='toggles verbose')
 
@@ -27,6 +26,7 @@ class BaseOptions():
 
         # for setting inputs
         self.parser.add_argument('--dataroot', type=str, default='./data/GNPFA/') 
+        self.parser.add_argument('--dataset', type=str, default='NPFAVerticeDataset', help='Name of dataset') 
         self.parser.add_argument('--facial_mask', type=str, required=False) 
 
         # for dataset dividing
@@ -78,11 +78,12 @@ class BaseOptions():
         
         if self.opt.facial_mask != None:
             self.opt.facial_mask = np.loadtxt(self.opt.facial_mask, dtype=int)
-            self.opt.nonfacial_mask = torch.tensor(
-                np.delete(
-                    np.arange(self.opt.vertice_dim // 3),
-                    self.opt.facial_mask
-                )
+            self.opt.nonfacial_mask = np.delete(
+                np.arange(self.opt.vertice_dim // 3),
+                self.opt.facial_mask
             )
+            self.opt.facial_mask = torch.tensor(self.opt.facial_mask)
+            self.opt.nonfacial_mask = torch.tensor(self.opt.nonfacial_mask)
+            
         
         return self.opt

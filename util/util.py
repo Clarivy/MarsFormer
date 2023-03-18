@@ -101,3 +101,11 @@ class Colorize(object):
 
 def save_model(model, save_dir, label):
     torch.save(model.state_dict(), os.path.join(save_dir,'{}_model.pth'.format(label)))    
+
+def to_cuda(*args):
+    return tuple(
+        map(
+            lambda x: None if x is None else x.cuda(),
+            args
+        )
+    )

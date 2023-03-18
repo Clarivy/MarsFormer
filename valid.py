@@ -10,12 +10,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from data_loader import NPFADataset
+from data_loader import get_dataset
 from faceformer import create_model
 
 opt = ValidOptions().parse(save=False)
 
-dataset = NPFADataset(opt)
+dataset = get_dataset(opt)
 visualizer = Visualizer(opt)
 model = create_model(opt).cuda()
 
@@ -23,9 +23,12 @@ model = create_model(opt).cuda()
 for i, data in enumerate(dataset):
     if i >= opt.how_many:
         break
-
-    audio, vertice, template, one_hot = data['audio'], data['vertice'], data['template'], data['one_hot']
-    audio, vertice, template, one_hot = audio.cuda(), vertice.cuda(), template.cuda(), one_hot.cuda()
+    audio, vertice, template, one_hot = util.to_cuda(
+        data['audio'],
+        data['vertice'],
+        data['template'],
+        data['one_hot']
+    )
     generated = model.predict(audio, template, one_hot).detach().cpu().numpy()
 
     npy_name = os.path.basename(data['data_dir']) + '.npy'
@@ -33,8 +36,9 @@ for i, data in enumerate(dataset):
     os.makedirs(npy_path, exist_ok=True)
     np.save(os.path.join(npy_path, npy_name), generated)
 
-    obj_path = os.path.join(npy_path, 'obj')
-    os.makedirs(obj_path, exist_ok=True)
-    visualizer.frame_visualizer(generated, obj_path)
+    if not opt.no_obj:
+        obj_path = os.path.join(npy_path, 'obj')
+        os.makedirs(obj_path, exist_ok=True)
+        visualizer.frame_visualizer(generated, obj_path)
     
     print(f'Processed {data["audio_dir"]} with identity {data["identity_name"]} ')

@@ -104,7 +104,8 @@ class Faceformer(nn.Module):
     def forward(self, audio, vertice, template, one_hot, criterion):
         # tgt_mask: :math:`(T, T)`.
         # memory_mask: :math:`(T, S)`.
-        template = template.unsqueeze(1) # (1,1, V*3)
+        if template is not None:
+            template = template.unsqueeze(1) # (1,1, V*3)
         frame_num = vertice.shape[1]
         obj_embedding = self.obj_vector(one_hot)
         hidden_states = self.audio_encoder(audio, frame_num=frame_num).last_hidden_state
@@ -127,10 +128,12 @@ class Faceformer(nn.Module):
             new_output = new_output + style_emb
             vertice_emb = torch.cat((vertice_emb, new_output), 1)
 
-        vertice_out = vertice_out + template
-        vertice_out = self.get_facial_area(vertice_out)
-        vertice = self.get_facial_area(vertice)
-        # print(vertice_out.shape) # 1 * n * 15069
+        # When predicting motion
+        if template is not None:
+            vertice_out = vertice_out + template
+            vertice_out = self.get_facial_area(vertice_out)
+            vertice = self.get_facial_area(vertice)
+
         loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
         
         total_loss = torch.mean(loss) - negative_penalty
@@ -141,7 +144,8 @@ class Faceformer(nn.Module):
         return losses
 
     def predict(self, audio, template, one_hot):
-        template = template.unsqueeze(1) # (1,1, V*3)
+        if template is not None:
+            template = template.unsqueeze(1) # (1,1, V*3)
         obj_embedding = self.obj_vector(one_hot)
         hidden_states = self.audio_encoder(audio).last_hidden_state
         frame_num = hidden_states.shape[1]
@@ -163,7 +167,8 @@ class Faceformer(nn.Module):
             new_output = new_output + style_emb
             vertice_emb = torch.cat((vertice_emb, new_output), 1)
 
-        vertice_out = vertice_out + template
+        if template is not None:
+            vertice_out = vertice_out + template
         return vertice_out
     
     def get_facial_area(self, vertice: torch.Tensor):

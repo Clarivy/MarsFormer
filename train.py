@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from torch.utils.data import random_split
 
 from options.train_options import TrainOptions
-from data_loader import NPFADataset
+from data_loader import get_dataset
 from faceformer import create_model
 import util.util as util
 from util.visualizer import Visualizer
@@ -30,7 +30,7 @@ if opt.debug:
     opt.display_freq = 1
     opt.print_freq = 1
 
-dataset = NPFADataset(opt)
+dataset = get_dataset(opt)
 total_dataset_size = len(dataset)
 train_dataset_size = int(total_dataset_size * 0.8)
 test_dataset_size = total_dataset_size - train_dataset_size
@@ -65,8 +65,12 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
         epoch_iter += 1
 
         # collect input data from data loader
-        audio, vertice, template, one_hot = data['audio'], data['vertice'], data['template'], data['one_hot']
-        audio, vertice, template, one_hot = audio.cuda(), vertice.cuda(), template.cuda(), one_hot.cuda()
+        audio, vertice, template, one_hot = util.to_cuda(
+            data['audio'],
+            data['vertice'],
+            data['template'],
+            data['one_hot']
+        )
 
         ############## Forward Pass ######################
         losses = model(audio, vertice, template, one_hot, criterion)
@@ -101,8 +105,12 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
         for i, data in enumerate(test_dataset):
 
             # collect input data from data loader
-            audio, vertice, template, one_hot = data['audio'], data['vertice'], data['template'], data['one_hot']
-            audio, vertice, template, one_hot = audio.cuda(), vertice.cuda(), template.cuda(), one_hot.cuda()
+            audio, vertice, template, one_hot = util.to_cuda(
+                data['audio'],
+                data['vertice'],
+                data['template'],
+                data['one_hot']
+            )
 
             ############## Forward Pass ######################
             losses = model(audio, vertice, template, one_hot, criterion)

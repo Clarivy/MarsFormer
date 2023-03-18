@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from data_loader import get_dataloaders
+from data_loader import get_voca_dataloaders
 from faceformer import Faceformer
 
 from tensorboardX import SummaryWriter
@@ -174,7 +174,7 @@ def main():
     model = model.to(torch.device("cuda"))
     
     #load data
-    dataset = get_dataloaders(args)
+    dataset = get_voca_dataloaders(args)
 
     # loss
     criterion = nn.MSELoss()

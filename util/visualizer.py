@@ -28,10 +28,10 @@ class Visualizer():
 
     # errors: same format as |errors| of plotCurrentErrors
     def print_current_errors(self, epoch, i, errors, t):
-        message = '(epoch: %d, iters: %d, time: %.3f) ' % (epoch, i, t)
+        message = '(epoch: %d, iters: %d, time: %.9f) ' % (epoch, i, t)
         for k, v in errors.items():
             if v != 0:
-                message += '%s: %.3f ' % (k, v)
+                message += '%s: %.9f ' % (k, v)
 
         print(message)
         with open(self.log_name, "a") as log_file:
@@ -45,7 +45,7 @@ class Visualizer():
         message = f'Validation at epoch {epoch}: '
         for k, v in errors.items():
             if v != 0:
-                message += '%s: %.3f ' % (k, v)
+                message += '%s: %.9f ' % (k, v)
 
         print(message)
         with open(self.log_name, "a") as log_file:

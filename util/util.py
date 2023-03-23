@@ -109,3 +109,12 @@ def to_cuda(*args):
             args
         )
     )
+
+
+def to_FloatTensor(*args):
+    return tuple(
+        map(
+            lambda x: torch.FloatTensor(x),
+            args
+        )
+    )

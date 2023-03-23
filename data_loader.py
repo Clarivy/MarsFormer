@@ -15,7 +15,7 @@ from psbody.mesh import Mesh
 import librosa    
 from pathlib import Path
 
-class VocaDataset(data.Dataset):
+class OriginVocaDataset(data.Dataset):
     """Custom data.Dataset compatible with data.DataLoader."""
     def __init__(self, data,subjects_dict,data_type="train"):
         self.data = data
@@ -40,6 +40,7 @@ class VocaDataset(data.Dataset):
 
     def __len__(self):
         return self.len
+
 
 def read_data(args):
     print("Loading data...")
@@ -76,10 +77,7 @@ def read_data(args):
                 if not os.path.exists(vertice_path):
                     del data[key]
                 else:
-                    if args.dataset == "vocaset":
-                        data[key]["vertice"] = np.load(vertice_path,allow_pickle=True)[::2,:]#due to the memory limit
-                    elif args.dataset == "BIWI":
-                        data[key]["vertice"] = np.load(vertice_path,allow_pickle=True)
+                    data[key]["vertice"] = np.load(vertice_path,allow_pickle=True)[::2,:]#due to the memory limit
 
                         
 
@@ -110,11 +108,11 @@ def read_data(args):
 def get_voca_dataloaders(args):
     dataset = {}
     train_data, valid_data, test_data, subjects_dict = read_data(args) # dataset | dict of three array: indicate 3 parts of subjects
-    train_data = VocaDataset(train_data,subjects_dict,"train")
+    train_data = OriginVocaDataset(train_data,subjects_dict,"train")
     dataset["train"] = data.DataLoader(dataset=train_data, batch_size=1, shuffle=True)
-    valid_data = VocaDataset(valid_data,subjects_dict,"val")
+    valid_data = OriginVocaDataset(valid_data,subjects_dict,"val")
     dataset["valid"] = data.DataLoader(dataset=valid_data, batch_size=1, shuffle=False)
-    test_data = VocaDataset(test_data,subjects_dict,"test")
+    test_data = OriginVocaDataset(test_data,subjects_dict,"test")
     dataset["test"] = data.DataLoader(dataset=test_data, batch_size=1, shuffle=False)
     return dataset
 
@@ -362,6 +360,71 @@ class NPFAEmbeddingDataset(NPFABaseDataset):
             }
             self.data.append(data_item)
 
+class VocaDataset(NPFABaseDataset):
+    def __init__(self, opt):
+        self.dataroot = opt.dataroot
+        self.max_len = opt.max_len
+        self.isTrain = opt.isTrain
+        self.vertice_dim = opt.vertice_dim
+        self.train_subjects:list = opt.train_subjects
+        self.audio_path = os.path.join(self.dataroot, "wav")
+        self.vertices_path = os.path.join(self.dataroot, "vertices_npy")
+        self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+        self.template_file = os.path.join(self.dataroot, "templates.pkl")
+        self.one_hot_labels = torch.eye(len(self.train_subjects), dtype=torch.float) # (num_identities, num_identities)
+        self.data = []
+    
+    def initialize(self):
+
+        # Load templates
+        with open(self.template_file, 'rb') as fin:
+            template_dict = pickle.load(fin,encoding='latin1')
+
+        # Load audio
+        for root, dirs, files in os.walk(self.audio_path):
+            for audio_filename in tqdm(files):
+                if audio_filename.endswith("wav"):
+                    # Prepare files to load
+                    wav_path = os.path.join(root, audio_filename)
+                    source_name = Path(os.path.basename(audio_filename)).stem
+                    subject_id = "_".join(source_name.split("_")[:-1])
+                    vertices_dir = os.path.join(self.vertices_path, source_name + '.npy')
+                    if subject_id not in self.train_subjects:
+                        continue
+                    if not os.path.exists(vertices_dir):
+                        continue
+
+                    # Load audio
+                    speech_array, sampling_rate = librosa.load(wav_path, sr=16000)
+                    input_values = np.squeeze(self.processor(speech_array,sampling_rate=16000).input_values)
+
+                    # Load template
+                    template = template_dict[subject_id]
+                    # Load vertices
+                    vertices_data = np.load(vertices_dir,allow_pickle=True)[::2,:]
+                    if vertices_data.shape[1] != self.vertice_dim:
+                        raise Exception(f"Number of vertices in {vertices_dir} is not correct, expect {self.vertice_dim}, but read {vertices_data.shape[1]}")
+                    
+                    one_hot = self.one_hot_labels[self.train_subjects.index(subject_id)]
+
+                    input_values, vertices_data, template, one_hot = util.to_FloatTensor(
+                        input_values, vertices_data, template, one_hot
+                    )
+
+                    template = template.flatten(0)
+
+                    data_item = {
+                        'audio'   : input_values.unsqueeze(0),
+                        'vertice' : vertices_data.unsqueeze(0),
+                        'template': template.unsqueeze(0),
+                        'one_hot' : one_hot.unsqueeze(0),
+                        'identity_name': subject_id,
+                        'audio_dir': wav_path,
+                        'vertices_dir': vertices_dir,
+                        'data_dir': wav_path,
+                        'source_name': source_name
+                    }
+                    self.data.append(data_item)
 
 def get_dataset(opt):
     # Load dataset by option

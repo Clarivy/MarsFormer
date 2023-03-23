@@ -3,7 +3,9 @@ import glob
 import torch
 from collections import defaultdict
 from torch.utils import data
+from util import util
 import copy
+import json
 import numpy as np
 import pickle
 from tqdm import tqdm
@@ -139,6 +141,7 @@ class NPFABaseDataset(data.Dataset):
         self.phase = opt.phase
         self.dataroot = opt.dataroot
         self.phase_data_root = os.path.join(self.dataroot, self.phase)
+        self.speaker_info_dir = os.path.join(self.dataroot, "speaker.json")
         self.train_subjects:list = opt.train_subjects
         if self.phase == 'valid':
             self.condition_subject = opt.condition_subject
@@ -148,9 +151,23 @@ class NPFABaseDataset(data.Dataset):
         # Check if data path exists
         if not os.path.exists(self.phase_data_root):
             raise Exception("Data path does not exist: {}".format(self.phase_data_root))
+
+        if os.path.exists(self.speaker_info_dir):
+            with open(self.speaker_info_dir, "r") as speaker_info_file:
+                self.speaker_info = json.load(speaker_info_file)
+        else:
+            raise Exception("Speaker info does not exist: {}".format(self.speaker_info_dir))
     
     def initialize(self):
         pass
+
+    def find_speaker(self, source_name):
+        target_list = [item for item in self.speaker_info if item['name'] == source_name]
+        # print(self.speaker_info)
+        # print(target_list)
+        # print(source_name)
+        assert len(target_list) == 1
+        return target_list[0]['speaker']
 
     def clip(vertice, start, end, audio):
         vertice_frame_num = vertice.shape[1]
@@ -230,8 +247,17 @@ class NPFAVerticeDataset(NPFABaseDataset):
         # Load data to memory
         self.data = []
         for data_dir in tqdm(self.data_dirs, desc='Loading data'):
-            # Load audio
+            # Get the directory name of each data file
             audio_dir = os.path.join(data_dir, "audio.wav")
+            source_name = os.path.basename(data_dir)
+            # speaker_name = self.find_speaker(source_name)
+            # if speaker_name is None:
+            #     raise Exception("No speaker info found for {}".format(source_name))
+            # else:
+            #     if speaker_name != "chn_female_1":
+            #         continue
+            
+            # Load audio
             speech_array, sampling_rate = librosa.load(audio_dir, sr=16000)
             wav_data = torch.FloatTensor(np.squeeze(self.processor(speech_array,sampling_rate=16000).input_values))
             
@@ -265,7 +291,8 @@ class NPFAVerticeDataset(NPFABaseDataset):
                     'identity_name': identity_name,
                     'audio_dir': audio_dir,
                     'vertices_dir': vertices_dir,
-                    'data_dir': data_dir
+                    'data_dir': data_dir,
+                    'source_name': source_name
                 }
                 self.data.append(data_item)
     
@@ -301,6 +328,7 @@ class NPFAEmbeddingDataset(NPFABaseDataset):
         self.data = []
         for data_dir in tqdm(self.data_dirs, desc='Loading data'):
             # Load audio
+            source_name = os.path.basename(data_dir)
             audio_dir = os.path.join(data_dir, "audio.wav")
             speech_array, sampling_rate = librosa.load(audio_dir, sr=16000)
             wav_data = torch.FloatTensor(np.squeeze(self.processor(speech_array,sampling_rate=16000).input_values))
@@ -329,7 +357,8 @@ class NPFAEmbeddingDataset(NPFABaseDataset):
                 'identity_name': 'Embedding',
                 'audio_dir': audio_dir,
                 'vertices_dir': vertices_dir,
-                'data_dir': data_dir
+                'data_dir': data_dir,
+                'source_name': source_name
             }
             self.data.append(data_item)
 

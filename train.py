@@ -14,6 +14,8 @@ import util.util as util
 from util.visualizer import Visualizer
 from collections import Counter
 
+util.enable_reproducibility() # Make reprducibility
+
 opt = TrainOptions().parse()
 model_save_dir = os.path.join(opt.checkpoints_dir, opt.name)
 iter_path = os.path.join(opt.checkpoints_dir, opt.name, 'iter.txt')

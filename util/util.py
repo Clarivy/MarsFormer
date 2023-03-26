@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 import numpy as np
 import os
+import random
 
 # Converts a Tensor into a Numpy array
 # |imtype|: the desired type of the converted numpy array
@@ -118,3 +119,11 @@ def to_FloatTensor(*args):
             args
         )
     )
+
+def enable_reproducibility(random_seed = 3407):
+    torch.backends.cudnn.deterministic = True #fix random seed to keep the same value as same data took in
+    torch.backends.cudnn.benchmark = False #auto choose convo methods
+    np.random.seed(random_seed)
+    torch.manual_seed(random_seed)
+    torch.cuda.manual_seed_all(random_seed)
+    random.seed(random_seed)

@@ -141,6 +141,7 @@ class NPFABaseDataset(data.Dataset):
         self.phase_data_root = os.path.join(self.dataroot, self.phase)
         self.speaker_info_dir = os.path.join(self.dataroot, "speaker.json")
         self.train_subjects:list = opt.train_subjects
+        self.valid_subjects:list = opt.valid_subjects
         if self.phase == 'valid':
             self.condition_subject = opt.condition_subject
         self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")

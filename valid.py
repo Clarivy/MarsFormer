@@ -20,19 +20,19 @@ visualizer = Visualizer(opt)
 model = create_model(opt).cuda()
 
 # test
-for i, data in enumerate(dataset):
+for i, total_data in enumerate(dataset):
     if i >= opt.how_many:
         break
     audio, vertice, template, one_hot = util.to_cuda(
-        data['audio'],
-        data['vertice'],
-        data['template'],
-        data['one_hot']
+        total_data['audio'],
+        total_data['vertice'],
+        total_data['template'],
+        total_data['one_hot']
     )
     generated = model.predict(audio, template, one_hot).detach().cpu().numpy()
 
-    npy_name = os.path.basename(data['data_dir']) + '.npy'
-    npy_path = os.path.join(opt.results_dir, f"{opt.name}_{opt.which_epoch}", data['identity_name'])
+    npy_name = os.path.basename(total_data['data_dir'][0]) + '.npy'
+    npy_path = os.path.join(opt.results_dir, f"{opt.name}_{opt.which_epoch}", total_data['identity_name'][0])
     os.makedirs(npy_path, exist_ok=True)
     np.save(os.path.join(npy_path, npy_name), generated)
 
@@ -41,4 +41,4 @@ for i, data in enumerate(dataset):
         os.makedirs(obj_path, exist_ok=True)
         visualizer.frame_visualizer(generated, obj_path)
     
-    print(f'Processed {data["audio_dir"]} with identity {data["identity_name"]} ')
+    print(f'Processed {total_data["audio_dir"][0]} with identity {total_data["identity_name"][0]} ')

@@ -5,7 +5,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import random_split
 
 from options.train_options import TrainOptions
 from data_loader import get_dataset
@@ -32,12 +31,11 @@ if opt.debug:
     opt.display_freq = 1
     opt.print_freq = 1
 
-dataset = get_dataset(opt)
-total_dataset_size = len(dataset)
-train_dataset_size = int(total_dataset_size * 0.8)
-test_dataset_size = total_dataset_size - train_dataset_size
-[train_dataset, test_dataset] = random_split(dataset, [train_dataset_size, test_dataset_size], torch.Generator().manual_seed(42))
-print('#dataset contains %d video' % total_dataset_size)
+train_dataset, test_dataset = get_dataset(opt)
+train_dataset_size = len(train_dataset)
+test_dataset_size = len(test_dataset)
+total_size = train_dataset_size + test_dataset_size
+print('#dataset contains %d video' % total_size)
 print('#train_dataset: %d ' % train_dataset_size)
 print('#test_dataset: %d ' % test_dataset_size)
 
@@ -60,7 +58,7 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
 
     # train
     model.train()
-    for i, data in enumerate(train_dataset, start=epoch_iter):
+    for i, total_data in enumerate(train_dataset, start=epoch_iter):
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
         total_steps += 1
@@ -68,10 +66,10 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
 
         # collect input data from data loader
         audio, vertice, template, one_hot = util.to_cuda(
-            data['audio'],
-            data['vertice'],
-            data['template'],
-            data['one_hot']
+            total_data['audio'],
+            total_data['vertice'],
+            total_data['template'],
+            total_data['one_hot']
         )
 
         ############## Forward Pass ######################
@@ -104,14 +102,14 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
     model.eval()
     with torch.no_grad():
         total_errors = Counter()
-        for i, data in enumerate(test_dataset):
+        for i, total_data in enumerate(test_dataset):
 
             # collect input data from data loader
             audio, vertice, template, one_hot = util.to_cuda(
-                data['audio'],
-                data['vertice'],
-                data['template'],
-                data['one_hot']
+                total_data['audio'],
+                total_data['vertice'],
+                total_data['template'],
+                total_data['one_hot']
             )
 
             ############## Forward Pass ######################

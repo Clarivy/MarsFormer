@@ -6,6 +6,8 @@ import numpy as np
 import os
 import random
 
+GLOBAL_SEED = 3407
+
 # Converts a Tensor into a Numpy array
 # |imtype|: the desired type of the converted numpy array
 def tensor2im(image_tensor, imtype=np.uint8, normalize=True):
@@ -127,3 +129,7 @@ def enable_reproducibility(random_seed = 3407):
     torch.manual_seed(random_seed)
     torch.cuda.manual_seed_all(random_seed)
     random.seed(random_seed)
+    GLOBAL_SEED = random_seed
+
+def global_seed():
+    return GLOBAL_SEED

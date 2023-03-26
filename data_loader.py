@@ -146,6 +146,9 @@ class NPFABaseDataset(data.Dataset):
             self.condition_subject = opt.condition_subject
         self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
         self.data = []
+        if self.isTrain:
+            self.train_data = []
+            self.test_data = []
 
         # Check if data path exists
         if not os.path.exists(self.phase_data_root):
@@ -169,8 +172,8 @@ class NPFABaseDataset(data.Dataset):
         return target_list[0]['speaker']
 
     def clip(vertice, start, end, audio):
-        vertice_frame_num = vertice.shape[1]
-        audio_frame_num = audio.shape[1]
+        vertice_frame_num = vertice.shape[0]
+        audio_frame_num = audio.shape[0]
         audio_start = start * audio_frame_num // vertice_frame_num
         audio_end = end * audio_frame_num // vertice_frame_num
         clipped_vertice = vertice[:,start:end]
@@ -182,7 +185,7 @@ class NPFABaseDataset(data.Dataset):
 
     def __getitem__(self, index):
         # Clip long audio and vertice
-        frame_num = self.data[index]['vertice'].shape[1]
+        frame_num = self.data[index]['vertice'].shape[0]
         if frame_num > self.max_len:
             if self.isTrain:
                 start = random.randint(0, frame_num - self.max_len)
@@ -200,6 +203,17 @@ class NPFABaseDataset(data.Dataset):
                 'vertice' : clipped_vertice
             }
         return self.data[index]
+    
+    def split(total_data):
+        total_dataset_size = len(total_data)
+        train_dataset_size = int(total_dataset_size * 0.8)
+        test_dataset_size = total_dataset_size - train_dataset_size
+        [train_data, test_data] = data.random_split(
+            total_data,
+            [train_dataset_size, test_dataset_size],
+            torch.Generator().manual_seed(util.global_seed())
+        )
+        return train_data, test_data
     
 
 class NPFAVerticeDataset(NPFABaseDataset):
@@ -283,10 +297,10 @@ class NPFAVerticeDataset(NPFABaseDataset):
                 
                 # vertices_data = (vertices_data - identity_neutral).clone.detach()
                 data_item = {
-                    'audio'   : wav_data.unsqueeze(0),
-                    'vertice' : vertices_data.unsqueeze(0),
-                    'template': identity_neutral.unsqueeze(0),
-                    'one_hot' : self.one_hot_labels[identity_index].unsqueeze(0),
+                    'audio'   : wav_data,
+                    'vertice' : vertices_data,
+                    'template': identity_neutral,
+                    'one_hot' : self.one_hot_labels[0],
                     'identity_name': identity_name,
                     'audio_dir': audio_dir,
                     'vertices_dir': vertices_dir,
@@ -294,6 +308,10 @@ class NPFAVerticeDataset(NPFABaseDataset):
                     'source_name': source_name
                 }
                 self.data.append(data_item)
+        
+        # Split to two set when training
+        if self.isTrain:
+            self.train_data, self.test_data = NPFABaseDataset.split(self.data)
     
     @property
     def identity_num(self):
@@ -349,8 +367,8 @@ class NPFAEmbeddingDataset(NPFABaseDataset):
                 raise Exception(f"Number of vertices in {vertices_dir} is not correct, expect {self.vertice_dim}, but read {vertices_data.shape[1]}")
             # vertices_data = (vertices_data - identity_neutral).clone.detach()
             data_item = {
-                'audio'   : wav_data.unsqueeze(0),
-                'vertice' : vertices_data.unsqueeze(0),
+                'audio'   : wav_data,
+                'vertice' : vertices_data,
                 'template': None,
                 'one_hot' : torch.ones((1, 1), dtype=torch.float),
                 'identity_name': 'Embedding',
@@ -360,6 +378,10 @@ class NPFAEmbeddingDataset(NPFABaseDataset):
                 'source_name': source_name
             }
             self.data.append(data_item)
+        
+        # Split to two set when training
+        if self.isTrain:
+            self.train_data, self.test_data = NPFABaseDataset.split(self.data)
 
 class VocaDataset(NPFABaseDataset):
     def __init__(self, opt):
@@ -374,6 +396,9 @@ class VocaDataset(NPFABaseDataset):
         self.template_file = os.path.join(self.dataroot, "templates.pkl")
         self.one_hot_labels = torch.eye(len(self.train_subjects), dtype=torch.float) # (num_identities, num_identities)
         self.data = []
+        if self.isTrain:
+            self.train_data = []
+            self.test_data = []
     
     def initialize(self):
 
@@ -415,10 +440,10 @@ class VocaDataset(NPFABaseDataset):
                     template = template.flatten(0)
 
                     data_item = {
-                        'audio'   : input_values.unsqueeze(0),
-                        'vertice' : vertices_data.unsqueeze(0),
-                        'template': template.unsqueeze(0),
-                        'one_hot' : one_hot.unsqueeze(0),
+                        'audio'   : input_values,
+                        'vertice' : vertices_data,
+                        'template': template,
+                        'one_hot' : one_hot,
                         'identity_name': subject_id,
                         'audio_dir': wav_path,
                         'vertices_dir': vertices_dir,
@@ -426,6 +451,11 @@ class VocaDataset(NPFABaseDataset):
                         'source_name': source_name
                     }
                     self.data.append(data_item)
+
+        # Split to two set when training
+        if self.isTrain:
+            self.train_data, self.test_data = NPFABaseDataset.split(self.data)
+            
 
 def get_dataset(opt):
     # Load dataset by option
@@ -435,4 +465,21 @@ def get_dataset(opt):
     # Instance of NPFADataset
     dataset = Dataset(opt)
     dataset.initialize()
-    return dataset
+    if opt.isTrain:
+        return (
+            data.DataLoader(
+                dataset=dataset.train_data,
+                batch_size=1,
+                shuffle=True
+            ),
+            data.DataLoader(
+                dataset=dataset.test_data,
+                batch_size=1,
+                shuffle=False
+            )
+        )
+    return data.DataLoader(
+        dataset=dataset,
+        batch_size=1,
+        shuffle=False
+    )

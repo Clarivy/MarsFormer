@@ -293,7 +293,7 @@ class NPFAVerticeDataset(NPFABaseDataset):
                     'audio'   : wav_data,
                     'vertice' : vertices_data,
                     'template': identity_neutral,
-                    'one_hot' : self.one_hot_labels[0],
+                    'one_hot' : self.one_hot_labels[identity_index],
                     'identity_name': identity_name,
                     'audio_dir': audio_dir,
                     'vertices_dir': vertices_dir,

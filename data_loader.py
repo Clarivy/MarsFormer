@@ -176,8 +176,8 @@ class NPFABaseDataset(data.Dataset):
         audio_frame_num = audio.shape[0]
         audio_start = start * audio_frame_num // vertice_frame_num
         audio_end = end * audio_frame_num // vertice_frame_num
-        clipped_vertice = vertice[:,start:end]
-        clipped_audio = audio[:,audio_start:audio_end]
+        clipped_vertice = vertice[start:end]
+        clipped_audio = audio[audio_start:audio_end]
         return clipped_vertice, clipped_audio
     
     def __len__(self):

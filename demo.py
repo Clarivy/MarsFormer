@@ -10,6 +10,7 @@ import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from options.base_options import BaseOptions
 
 import cv2
 import tempfile
@@ -25,19 +26,20 @@ def test_model(args):
         os.makedirs(args.result_path)
 
     #build model
+    args.train_subjects = BaseOptions.split_subjects(args.train_subjects)
+    train_subjects_list = args.train_subjects
     model = Faceformer(args)
     model.load_state_dict(torch.load(args.model_path))
+
     from faceformer import PeriodicPositionalEncoding, init_biased_mask
-    model.PPE = PeriodicPositionalEncoding(args.feature_dim, period = args.period, max_seq_len=6000)
-    model.biased_mask = init_biased_mask(n_head = 4, max_seq_len = 6000, period=args.period)
+    model.PPE = PeriodicPositionalEncoding(args.feature_dim, period = args.period, max_seq_len=args.max_len)
+    model.biased_mask = init_biased_mask(n_head = 4, max_seq_len = args.max_len, period=args.period)
     model = model.to(torch.device(args.device))
     model.eval()
 
     template_file = os.path.join(args.dataset, args.template_path)
     with open(template_file, 'rb') as fin:
         templates = pickle.load(fin,encoding='latin1')
-
-    train_subjects_list = [i for i in args.train_subjects.split(" ")]
 
     one_hot_labels = np.eye(len(train_subjects_list))
     iter = train_subjects_list.index(args.condition)
@@ -67,7 +69,7 @@ def test_model(args):
     audio_feature = np.reshape(audio_feature,(-1,audio_feature.shape[0]))
     audio_feature = torch.FloatTensor(audio_feature).to(device=args.device)
     start=time.time()
-    prediction = model.predict(audio_feature, template, one_hot, base_only=args.base_only)
+    prediction = model.predict(audio_feature, template, one_hot)
     print("predict:"+str(time.time()-start))
     prediction = prediction.squeeze() # (seq_len, V*3)
     np.save(os.path.join(args.result_path, test_name), prediction.detach().cpu().numpy())
@@ -162,7 +164,7 @@ def render_sequence(args):
         if args.base_model_path is not None:
             template_file = args.base_template
         else:
-            template_file = os.path.join(args.dataset, args.render_template_path, "FLAME_sample.ply")
+            template_file = args.render_template_path
          
     print("rendering: ", test_name)
                  
@@ -224,6 +226,7 @@ def main():
     parser.add_argument("--neg_penalty", type=float,required=False, default=1e-7, help='penalty for negative value in the base vector')
     parser.add_argument("--no_render", action='store_true', help='whether to render the video')
     parser.add_argument("--base_only", action='store_true', help='whether to save whole model or just base vector')
+    parser.add_argument('--max_len', type=int, default=600, help='number of maximum frame num')
     args = parser.parse_args()
 
     test_model(args)

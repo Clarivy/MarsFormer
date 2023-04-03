@@ -360,8 +360,7 @@ class NPFAEmbeddingDataset(NPFABaseDataset):
             data_item = {
                 'audio'   : wav_data,
                 'vertice' : vertices_data,
-                'template': None,
-                'one_hot' : torch.ones((1, 1), dtype=torch.float),
+                'one_hot' : torch.ones((1), dtype=torch.float),
                 'identity_name': 'Embedding',
                 'audio_dir': audio_dir,
                 'vertices_dir': vertices_dir,

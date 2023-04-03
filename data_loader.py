@@ -448,6 +448,90 @@ class VocaDataset(NPFABaseDataset):
         if self.isTrain:
             self.train_data, self.test_data = util.split_dataset(self)
 
+class VocaDataset2(NPFABaseDataset):
+    def __init__(self, opt):
+        self.dataroot = opt.dataroot
+        self.max_len = opt.max_len
+        self.isTrain = opt.isTrain
+        self.vertice_dim = opt.vertice_dim
+        self.train_subjects:list = opt.train_subjects
+        self.test_subjects:list = opt.test_subjects
+        self.audio_path = os.path.join(self.dataroot, "wav")
+        self.vertices_path = os.path.join(self.dataroot, "vertices_npy")
+        self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+        self.template_file = os.path.join(self.dataroot, "templates.pkl")
+        self.one_hot_labels = torch.eye(len(self.train_subjects), dtype=torch.float) # (num_identities, num_identities)
+        self.data = []
+        if self.isTrain:
+            self.train_data = []
+            self.test_data = []
+    
+    def initialize(self):
+
+        # Load templates
+        with open(self.template_file, 'rb') as fin:
+            template_dict = pickle.load(fin,encoding='latin1')
+        # Load audio
+        for root, dirs, files in os.walk(self.audio_path):
+            for audio_filename in tqdm(files):
+                if audio_filename.endswith("wav"):
+                    # Prepare files to load
+                    wav_path = os.path.join(root, audio_filename)
+                    source_name = Path(os.path.basename(audio_filename)).stem
+                    subject_id = "_".join(source_name.split("_")[:-1])
+                    vertices_dir = os.path.join(self.vertices_path, source_name + '.npy')
+                    
+                    if (subject_id not in self.train_subjects) and (subject_id not in self.test_subjects):
+                        continue
+                    if not os.path.exists(vertices_dir):
+                        continue
+
+                    # Load audio
+                    speech_array, sampling_rate = librosa.load(wav_path, sr=16000)
+                    input_values = np.squeeze(self.processor(speech_array,sampling_rate=16000).input_values)
+
+                    # Load template
+                    template = template_dict[subject_id]
+                    # Load vertices
+                    vertices_data = np.load(vertices_dir,allow_pickle=True)[::2,:]
+                    if vertices_data.shape[1] != self.vertice_dim:
+                        raise Exception(f"Number of vertices in {vertices_dir} is not correct, expect {self.vertice_dim}, but read {vertices_data.shape[1]}")
+                    
+                    one_hot = self.one_hot_labels[self.train_subjects.index(subject_id)] if subject_id in self.train_subjects else self.one_hot_labels[self.test_subjects.index(subject_id)]
+
+                    input_values, vertices_data, template, one_hot = util.to_FloatTensor(
+                        input_values, vertices_data, template, one_hot
+                    )
+
+                    template = template.flatten(0)
+
+                    data_item = {
+                        'audio'   : input_values,
+                        'vertice' : vertices_data,
+                        'template': template,
+                        'one_hot' : one_hot,
+                        'identity_name': subject_id,
+                        'audio_dir': wav_path,
+                        'vertices_dir': vertices_dir,
+                        'data_dir': wav_path,
+                        'source_name': source_name
+                    }
+                    # self.data.append(data_item)
+                    if self.isTrain:
+                        if subject_id in self.train_subjects:
+                            self.train_data.append(data_item)
+                        else:
+                            self.test_data.append(data_item)
+                    else:
+                        self.data.append(data_item)
+        # print(len(self.train_data))
+        # print(len(self.test_data))
+        # print(len(self.data))
+        # Split to two set when training
+        # if self.isTrain:
+        #     self.train_data, self.test_data = NPFABaseDataset.split(self.data)
+
+
 def get_dataset(opt):
     # Load dataset by option
     Dataset = globals()[opt.dataset]

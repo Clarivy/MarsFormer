@@ -204,16 +204,7 @@ class NPFABaseDataset(data.Dataset):
             }
         return self.data[index]
     
-    def split(total_data):
-        total_dataset_size = len(total_data)
-        train_dataset_size = int(total_dataset_size * 0.8)
-        test_dataset_size = total_dataset_size - train_dataset_size
-        [train_data, test_data] = data.random_split(
-            total_data,
-            [train_dataset_size, test_dataset_size],
-            torch.Generator().manual_seed(util.global_seed())
-        )
-        return train_data, test_data
+
     
 
 class NPFAVerticeDataset(NPFABaseDataset):
@@ -311,7 +302,7 @@ class NPFAVerticeDataset(NPFABaseDataset):
         
         # Split to two set when training
         if self.isTrain:
-            self.train_data, self.test_data = NPFABaseDataset.split(self.data)
+            self.train_data, self.test_data = util.split_dataset(self)
     
     @property
     def identity_num(self):
@@ -381,7 +372,7 @@ class NPFAEmbeddingDataset(NPFABaseDataset):
         
         # Split to two set when training
         if self.isTrain:
-            self.train_data, self.test_data = NPFABaseDataset.split(self.data)
+            self.train_data, self.test_data = util.split_dataset(self)
 
 class VocaDataset(NPFABaseDataset):
     def __init__(self, opt):
@@ -454,8 +445,7 @@ class VocaDataset(NPFABaseDataset):
 
         # Split to two set when training
         if self.isTrain:
-            self.train_data, self.test_data = NPFABaseDataset.split(self.data)
-            
+            self.train_data, self.test_data = util.split_dataset(self)
 
 def get_dataset(opt):
     # Load dataset by option

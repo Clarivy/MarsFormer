@@ -20,6 +20,7 @@ visualizer = Visualizer(opt)
 model = create_model(opt).cuda()
 
 # test
+model.eval()
 for i, total_data in enumerate(dataset):
     if i >= opt.how_many:
         break

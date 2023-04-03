@@ -158,12 +158,14 @@ class NPFABaseDataset(data.Dataset):
             with open(self.speaker_info_dir, "r") as speaker_info_file:
                 self.speaker_info = json.load(speaker_info_file)
         else:
-            raise Exception("Speaker info does not exist: {}".format(self.speaker_info_dir))
+            self.speaker_info = None
     
     def initialize(self):
         pass
 
     def find_speaker(self, source_name):
+        if self.speaker_info is not None:
+            raise Exception("Speaker info does not exist: {}".format(self.speaker_info_dir))
         target_list = [item for item in self.speaker_info if item['name'] == source_name]
         # print(self.speaker_info)
         # print(target_list)

@@ -5,6 +5,7 @@ from PIL import Image
 import numpy as np
 import os
 import random
+from torch.utils import data
 
 GLOBAL_SEED = 3407
 
@@ -133,3 +134,14 @@ def enable_reproducibility(random_seed = 3407):
 
 def global_seed():
     return GLOBAL_SEED
+
+def split_dataset(dataset):
+    total_dataset_size = len(dataset)
+    train_dataset_size = int(total_dataset_size * 0.8)
+    test_dataset_size = total_dataset_size - train_dataset_size
+    [train_data, test_data] = data.random_split(
+        dataset,
+        [train_dataset_size, test_dataset_size],
+        torch.Generator().manual_seed(global_seed())
+    )
+    return train_data, test_data

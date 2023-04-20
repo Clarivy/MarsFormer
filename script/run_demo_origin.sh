@@ -1,3 +1,5 @@
+export PYOPENGL_PLATFORM=osmesa
+export MUJOCO_GL=osmesa
 set PYTHONPATH=..
 python demo.py \
 --model_name vocaset \
@@ -11,3 +13,4 @@ python demo.py \
 --condition FaceTalk_170913_03279_TA \
 --subject FaceTalk_170809_00138_TA \
 --model_path ./vocaset/vocaset_ori.pth
+--base_template ./data/000_generic_neutral_mesh.obj \

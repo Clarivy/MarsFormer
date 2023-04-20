@@ -317,6 +317,18 @@ class NPFAVerticeDataset(NPFABaseDataset):
             return True
         return False
 
+class NoStyleDataset(NPFABaseDataset):
+    
+    def __getitem__(self, index):
+        data = super().__getitem__(index)
+        return {
+            **data,
+            "one_hot": self.one_hot_labels[0]
+        }
+
+class NPFAVerticeNoStyleDataset(NoStyleDataset, NPFAVerticeDataset):
+    pass
+
 class NPFAEmbeddingDataset(NPFABaseDataset):
 
     def __init__(self, opt):
@@ -447,6 +459,11 @@ class VocaDataset(NPFABaseDataset):
         # Split to two set when training
         if self.isTrain:
             self.train_data, self.test_data = util.split_dataset(self)
+
+# By C3 MRO, __get_item__ in VocaDataset will be override by NoStyleDataset
+class VocaNoStyleDataset(NoStyleDataset, VocaDataset):
+    pass
+
 
 class VocaDataset2(NPFABaseDataset):
     def __init__(self, opt):

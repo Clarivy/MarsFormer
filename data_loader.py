@@ -239,7 +239,7 @@ class NPFAVerticeDataset(NPFABaseDataset):
             if self.use_identity(identity_name):
                 self.identity_dict[identity_name] = (
                     identity_count if self.phase != 'valid' else self.condition_index,
-                    torch.FloatTensor(np.load(identity_dir)[0]).flatten(0), # (14062 * 3,)
+                    torch.FloatTensor(np.load(identity_dir)[0]).flatten(0) / 100, # (14062 * 3,)
                 )
                 identity_count += 1
         if identity_count == 0:
@@ -280,7 +280,7 @@ class NPFAVerticeDataset(NPFABaseDataset):
                 identity_index, identity_neutral = self.identity_dict[identity_name]
 
                 # Load vertices
-                vertices_data = torch.FloatTensor(np.load(vertices_dir)).flatten(1) # (frame_num, 14062 * 3)
+                vertices_data = torch.FloatTensor(np.load(vertices_dir)).flatten(1) / 100 # (frame_num, 14062 * 3)
                 # Skip every other frame if the fps is 60
                 if "60fps" in os.path.basename(vertices_dir):
                     vertices_data = vertices_data[::2] 

@@ -1,9 +1,11 @@
+set -e
 MODEL_NAME=scaled_nomask_lr_1e-4
 WHICH_EPOCH=latest
 set PYTHONPATH=..
 python valid.py\
     --name $MODEL_NAME \
-    --gpu_id 0 \
+    --dataset NPFAVerticeNoStyleDataset \
+    --gpu_id 3 \
     --dataroot ./data/GNPFA/ \
     --how_many 2
 

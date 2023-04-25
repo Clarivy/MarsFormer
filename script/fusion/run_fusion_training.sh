@@ -1,11 +1,11 @@
 set PYTHONPATH=/data/new_disk/pangbai/FaceFormer/FaceFormer/
+# export 'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512'
 python train.py\
-    --name emb_full_lr_1e-7_kl_chnmale1 \
-    --gpu_id 2 \
-    --dataroot ./data/exp_code/ \
-    --dataset NPFAEmbeddingDataset \
-    --train_subjects embedding \
-    --valid_subjects embedding \
+    --name fusion_full_lr_1e-7 \
+    --gpu_id 1 \
+    --dataroot ./data/GNPFA/ \
+    --dataset NPFAFusionDataset \
+    --train_subjects "044blendshape" \
     --lr 1e-7 \
     --feature_dim 64 \
     --vertice_dim 256 \

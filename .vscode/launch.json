@@ -5,6 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "name": "Python: Debug Train",
             "type": "python",
             "request": "launch",
@@ -18,8 +26,8 @@
                 "0",
                 "--dataroot",
                 "./data/GNPFA/",
-                "--tf_log",
-                "--phase", "debug"
+                "--phase",
+                "debug"
             ]
         },
         {
@@ -36,7 +44,6 @@
                 "0",
                 "--dataroot",
                 "./data/GNPFA/",
-                "--tf_log"
             ]
         },
         {
@@ -53,7 +60,6 @@
                 "0",
                 "--dataroot",
                 "./data/GNPFA/",
-                "--tf_log"
             ]
         },
         {
@@ -110,6 +116,47 @@
                 "FaceTalk_170809_00138_TA",
                 "--model_path",
                 "./vocaset/save/15_model.pth"
+            ]
+        },
+        {
+            "name": "Python: Debug train_voca2",
+            "type": "python",
+            "request": "launch",
+            "program": "train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--name", "voca_test_lr_1e-4",
+                "--gpu_id","3",
+                "--dataroot", "./vocaset/",
+                "--dataset", "VocaDataset2" ,
+                "--train_subjects", "FaceTalk_170728_03272_TA FaceTalk_170904_00128_TA FaceTalk_170725_00137_TA FaceTalk_170915_00223_TA FaceTalk_170811_03274_TA FaceTalk_170913_03279_TA FaceTalk_170904_03276_TA FaceTalk_170912_03278_TA",
+                "--test_subjects", "FaceTalk_170811_03275_TA FaceTalk_170908_03277_TA",
+                "--lr","1e-4",
+                "--vertice_dim", "15069",
+                "--epoch_num", "1000",
+                "--max_len", "600",
+            ]
+        },
+        {
+            "name": "Python: Debug train_emb_kl",
+            "type": "python",
+            "request": "launch",
+            "program": "train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--name", "emb_full_lr_1e-5_kl",
+                "--gpu_id","3",
+                "--dataroot", "./data/exp_code/",
+                "--dataset", "NPFAEmbeddingDataset" ,
+                "--train_subjects", "embedding",
+                "--test_subjects", "embedding",
+                "--lr","1e-7",
+                "--vertice_dim", "256",
+                "--epoch_num", "3000",
+                "--max_len", "600",
+                "--continue_train",
             ]
         }
     ]

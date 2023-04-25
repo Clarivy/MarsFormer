@@ -65,15 +65,19 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
         epoch_iter += 1
 
         # collect input data from data loader
-        audio, vertice, template, one_hot = util.to_cuda(
-            total_data['audio'],
-            total_data['vertice'],
-            total_data['template'],
-            total_data['one_hot']
-        )
-
+        total_data = util.to_cuda(total_data)
+        exp_code = None
+        audio, vertice, exp_code, template, one_hot = util.to_HalfTensor((
+            total_data.get(key) for key in [
+                "audio",
+                "vertice",
+                'exp_code',
+                "template",
+                "one_hot"
+            ]
+        ))
         ############## Forward Pass ######################
-        losses = model(audio, vertice, template, one_hot, criterion)
+        losses = model(audio, vertice, exp_code, template, one_hot, criterion)
 
         ############### Backward Pass ####################
         optimizer.zero_grad()
@@ -105,15 +109,18 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
         for i, total_data in enumerate(test_dataset):
 
             # collect input data from data loader
-            audio, vertice, template, one_hot = util.to_cuda(
-                total_data['audio'],
-                total_data['vertice'],
-                total_data['template'],
-                total_data['one_hot']
-            )
-
+            total_data = util.to_cuda(total_data)
+            audio, vertice, exp_code, template, one_hot = util.to_HalfTensor((
+                total_data.get(key) for key in [
+                    "audio",
+                    "vertice",
+                    "exp_code",
+                    "template",
+                    "one_hot"
+                ]
+            ))
             ############## Forward Pass ######################
-            losses = model(audio, vertice, template, one_hot, criterion)
+            losses = model(audio, vertice, exp_code, template, one_hot, criterion)
 
             ############## Display results and errors ##########
             ### print out errors

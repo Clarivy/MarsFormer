@@ -24,11 +24,15 @@ model.eval()
 for i, total_data in enumerate(dataset):
     if i >= opt.how_many:
         break
-    audio, vertice, template, one_hot = util.to_cuda(
-        total_data['audio'],
-        total_data['vertice'],
-        total_data['template'],
-        total_data['one_hot']
+    total_data = util.to_cuda(total_data)
+    audio, vertice, exp_code, template, one_hot = (
+        total_data.get(key) for key in [
+            "audio",
+            "vertice",
+            "exp_code",
+            "template",
+            "one_hot"
+        ]
     )
     generated = model.predict(audio, template, one_hot).detach().cpu().numpy()
 
@@ -38,8 +42,8 @@ for i, total_data in enumerate(dataset):
     np.save(os.path.join(npy_path, npy_name), generated)
 
     if not opt.no_obj:
-        obj_path = os.path.join(npy_path, 'obj')
+        obj_path = os.path.join(npy_path, 'obj', total_data['source_name'][0])
         os.makedirs(obj_path, exist_ok=True)
         visualizer.frame_visualizer(generated, obj_path)
     
-    print(f'Processed {total_data["audio_dir"][0]} with identity {total_data["identity_name"][0]} ')
+    print(f'Processed {total_data["audio_dir"][0]} with identity {total_data["identity_name"][0]} to {npy_path} ')

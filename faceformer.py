@@ -7,6 +7,7 @@ import math
 from wav2vec import Wav2Vec2Model
 from data_loader import load_base_model, load_vertices
 import os
+from data.GNPFA_decoder.decoder import GNPFA_Decoder
 
 # Temporal Bias, inspired by ALiBi: https://github.com/ofirpress/attention_with_linear_biases
 def init_biased_mask(n_head, max_seq_len, period):
@@ -76,6 +77,7 @@ class Faceformer(nn.Module):
         else:
             self.facial_mask = None
         self.vertice_dim = opt.vertice_dim
+        self.dataset = opt.dataset
 
         self.audio_encoder = Wav2Vec2Model.from_pretrained("./facebook/wav2vec")
         # wav2vec 2.0 weights initialization
@@ -88,7 +90,7 @@ class Faceformer(nn.Module):
         # temporal bias
         self.biased_mask = init_biased_mask(n_head = 4, max_seq_len = opt.max_len, period=opt.period)
         decoder_layer = nn.TransformerDecoderLayer(d_model=opt.feature_dim, nhead=4, dim_feedforward=2*opt.feature_dim, batch_first=True)        
-        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=1)
+        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=opt.decoder_layer)
         # motion decoder
         self.vertice_map_r = nn.Linear(opt.feature_dim, self.vertice_dim)
         
@@ -96,12 +98,18 @@ class Faceformer(nn.Module):
         self.obj_vector = nn.Linear(len(opt.train_subjects), opt.feature_dim, bias=False)
         self.activation_func = nn.LeakyReLU(negative_slope=opt.neg_penalty)
 
-        
+        # GNPFA_decoder
+        self.GNPFA_decoder = GNPFA_Decoder(
+        uv3d_toolkit_path="/data/new_disk/new_disk/pangbai/FaceFormer/FaceFormer/data/GNPFA_decoder/uv3d_toolkit_20221103",
+        uv3d_mesh_template_path="/data/lpy/GNPFA/GNPFA_packd/template/template_newuv.obj",
+        )
+
+
         # TODO: Wether initialize the base_map_r
         nn.init.constant_(self.vertice_map_r.weight, 0)
         nn.init.constant_(self.vertice_map_r.bias, 0)
 
-    def forward(self, audio, vertice, template, one_hot, criterion):
+    def forward(self, audio, vertice, exp_code, template, one_hot, criterion):
         # tgt_mask: :math:`(T, T)`.
         # memory_mask: :math:`(T, S)`.
         if template is not None:
@@ -111,8 +119,7 @@ class Faceformer(nn.Module):
         hidden_states = self.audio_encoder(audio, frame_num=frame_num).last_hidden_state
         hidden_states = self.audio_feature_map(hidden_states)
 
-        negative_penalty = torch.tensor(0.).cuda()
-
+        kl_div = 0
         for i in range(frame_num):
             if i==0:
                 vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
@@ -129,18 +136,33 @@ class Faceformer(nn.Module):
             vertice_emb = torch.cat((vertice_emb, new_output), 1)
 
         # When predicting motion
-        if template is not None:
-            vertice_out = vertice_out + template
-            vertice_out = self.get_facial_area(vertice_out)
-            vertice = self.get_facial_area(vertice)
+        # if template is not None:
+        #     vertice_out = vertice_out + template
+        #     vertice_out = self.get_facial_area(vertice_out)
+        #     vertice = self.get_facial_area(vertice)
 
-        loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
-        
-        total_loss = torch.mean(loss) - negative_penalty
-        losses = {
-            'total_loss': total_loss,
-            'negative_penalty': negative_penalty,
-        }
+        GNPFA_output = self.GNPFA_decoder.exp_decoder(vertice_out, template[0][0])
+        # loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
+        loss = criterion(GNPFA_output.flatten(1), vertice) # (batch, seq_len, V*3)
+        exp_loss = criterion(vertice_out, exp_code)
+        deviation_loss = torch.mean(loss) 
+        if self.dataset == "NPFAEmbeddingDataset":
+            #add kl-divergence to loss
+            kl_div = F.kl_div(torch.log(F.softmax(vertice_out, dim=-1)), F.softmax(vertice, dim=-1))
+            total_loss = deviation_loss + kl_div
+            losses = {
+                'total_loss': total_loss,
+                "deviation_loss": deviation_loss,
+                'kl_div' : kl_div,
+                'exp_loss' : exp_loss
+            }
+        else:
+            total_loss = deviation_loss
+            losses = {
+                'total_loss': total_loss,
+                "deviation_loss": deviation_loss,
+                'exp_loss' : exp_loss
+            }
         return losses
 
     def predict(self, audio, template, one_hot):
@@ -167,8 +189,8 @@ class Faceformer(nn.Module):
             new_output = new_output + style_emb
             vertice_emb = torch.cat((vertice_emb, new_output), 1)
 
-        if template is not None:
-            vertice_out = vertice_out + template
+        # if template is not None:
+        #     vertice_out = vertice_out + template
         return vertice_out
     
     def get_facial_area(self, vertice: torch.Tensor):
@@ -180,11 +202,16 @@ class Faceformer(nn.Module):
 
 def create_model(opt):
     model = Faceformer(opt)
-
+    model.half()
     if (not opt.isTrain) or (opt.continue_train):
         pretrained_path = os.path.join(opt.checkpoints_dir, opt.name)
         model_path = os.path.join(pretrained_path, f'{opt.which_epoch}_model.pth')
-        model.load_state_dict(torch.load(model_path))
+        new_sd = model.state_dict()
+        pretrained_sd = torch.load(model_path)
+        for k in pretrained_sd.keys():
+            if k in new_sd.keys():
+                new_sd[k] = pretrained_sd[k]
+        model.load_state_dict(new_sd)
         print(f"Model [{type(model).__name__}] is loaded from {model_path}")
     
     print(f"Model [{type(model).__name__}] is created")

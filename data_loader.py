@@ -164,7 +164,7 @@ class NPFABaseDataset(data.Dataset):
         pass
 
     def find_speaker(self, source_name):
-        if self.speaker_info is not None:
+        if self.speaker_info is None:
             raise Exception("Speaker info does not exist: {}".format(self.speaker_info_dir))
         target_list = [item for item in self.speaker_info if item['name'] == source_name]
         # print(self.speaker_info)

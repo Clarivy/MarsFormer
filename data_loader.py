@@ -161,7 +161,7 @@ class NPFABaseDataset(data.Dataset):
             self.speaker_info = None
     
     def initialize(self):
-        pass
+        raise NotImplementedError
 
     def find_speaker(self, source_name):
         if self.speaker_info is None:
@@ -379,6 +379,61 @@ class NPFAEmbeddingDataset(NPFABaseDataset):
                 'audio_dir': audio_dir,
                 'vertices_dir': vertices_dir,
                 'data_dir': data_dir,
+                'source_name': source_name
+            }
+            self.data.append(data_item)
+        
+        # Split to two set when training
+        if self.isTrain:
+            self.train_data, self.test_data = util.split_dataset(self)
+
+class DecaDataset(NPFABaseDataset):
+
+    def __init__(self, opt):
+        super().__init__(opt)
+        self.audio_dir = os.path.join(self.phase_data_root, "wav")
+        self.template_dir = os.path.join(self.phase_data_root, "template")
+    
+    def initialize(self):
+        
+        # Find all data files
+        self.data_dirs = list(sorted(glob.glob(os.path.join(self.phase_data_root, "npy/*.npy"))))
+
+        # Check if data exists
+        if len(self.data_dirs) == 0:
+            raise Exception("No data found in: {}".format(self.phase_data_root))
+
+        # Load data to memory
+        self.data = []
+        for vertices_dir in tqdm(self.data_dirs, desc='Loading data'):
+            # Load audio
+            source_name = os.path.basename(vertices_dir)
+            audio_dir = os.path.join(self.audio_dir, source_name.replace("npy", "wav"))
+            template_dir = os.path.join(self.template_dir, source_name)
+
+            # Load audio
+            speech_array, sampling_rate = librosa.load(audio_dir, sr=16000)
+            wav_data = torch.FloatTensor(np.squeeze(self.processor(speech_array,sampling_rate=16000).input_values))
+
+            # Load template
+            identity_neutral = torch.FloatTensor(np.load(template_dir)).flatten(0) # (15069)
+            
+            # Load vertices
+            vertices_data = torch.FloatTensor(np.load(vertices_dir)).flatten(1) # (frame_num, 15069)
+
+            # Check if the number of vertices is correct
+            if vertices_data.shape[1] != self.vertice_dim:
+                raise Exception(f"Number of vertices in {vertices_dir} is not correct, expect {self.vertice_dim}, but read {vertices_data.shape[1]}")
+            # vertices_data = (vertices_data - identity_neutral).clone.detach()
+            data_item = {
+                'audio'   : wav_data,
+                'vertice' : vertices_data,
+                'template': identity_neutral,
+                'one_hot' : torch.ones((1), dtype=torch.float), # No styling currently
+                'identity_name': 'Deca',
+                'audio_dir': audio_dir,
+                'vertices_dir': vertices_dir,
+                'data_dir': vertices_dir,
                 'source_name': source_name
             }
             self.data.append(data_item)

@@ -65,12 +65,8 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
         epoch_iter += 1
 
         # collect input data from data loader
-        audio, vertice, template, one_hot = util.to_cuda(
-            total_data['audio'],
-            total_data['vertice'],
-            total_data['template'],
-            total_data['one_hot']
-        )
+        data = util.to_cuda(total_data)
+        audio, vertice, template, one_hot = data['audio'], data['vertice'], data['template'], data['one_hot']
 
         ############## Forward Pass ######################
         losses = model(audio, vertice, template, one_hot, criterion)
@@ -105,12 +101,8 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
         for i, total_data in enumerate(test_dataset):
 
             # collect input data from data loader
-            audio, vertice, template, one_hot = util.to_cuda(
-                total_data['audio'],
-                total_data['vertice'],
-                total_data['template'],
-                total_data['one_hot']
-            )
+            data = util.to_cuda(total_data)
+            audio, vertice, template, one_hot = data['audio'], data['vertice'], data['template'], data['one_hot']
 
             ############## Forward Pass ######################
             losses = model(audio, vertice, template, one_hot, criterion)

@@ -172,7 +172,7 @@ def render_sequence(args):
     predicted_vertices = np.load(predicted_vertices_path)
     predicted_vertices = np.reshape(predicted_vertices,(-1,args.vertice_dim//3,3))
 
-    output_path = args.output_path
+    output_path = os.path.dirname(args.output_file)
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
@@ -189,12 +189,14 @@ def render_sequence(args):
         writer.write(pred_img)
 
     writer.release()
-    file_name = test_name + "_condition_" + args.condition
 
-    video_fname = os.path.join(output_path, file_name+'.mp4')
-    cmd = ('ffmpeg' + ' -i {0} -pix_fmt yuv420p -qscale 0 {1}'.format(
+    video_fname = args.output_file
+    cmd_video = ('ffmpeg' + ' -i {0} -pix_fmt yuv420p -qscale 0 {1}'.format(
        tmp_video_file.name, video_fname)).split()
-    call(cmd)
+    call(cmd_video)
+    audiovideo_fname = os.path.join(os.path.dirname(args.output_file), "audio_" + os.path.basename(args.output_file))
+    cmd_audio = f"ffmpeg -i {video_fname} -i {wav_path} -c:v copy -c:a aac {audiovideo_fname}".split()
+    call(cmd_audio)
 
 def main():
     parser = argparse.ArgumentParser(description='FaceFormer: Speech-Driven 3D Facial Animation with Transformers')
@@ -211,7 +213,7 @@ def main():
        " FaceTalk_170904_03276_TA FaceTalk_170912_03278_TA")
     parser.add_argument("--test_subjects", type=str, default="FaceTalk_170809_00138_TA"
        " FaceTalk_170731_00024_TA")
-    parser.add_argument("--output_path", type=str, default="demo/output", help='path of the rendered video sequence')
+    parser.add_argument("--output_file", type=str, default="demo/output/temp.mp4", help='path of the rendered video sequence')
     parser.add_argument("--wav_path", type=str, default="demo/wav/test.wav", help='path of the input audio signal')
     parser.add_argument("--result_path", type=str, default="demo/result", help='path of the predictions')
     parser.add_argument("--condition", type=str, default="M3", help='select a conditioning subject from train_subjects')

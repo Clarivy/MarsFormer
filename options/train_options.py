@@ -18,6 +18,7 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--phase', type=str, default='train', help='train, val, test, etc')
         self.parser.add_argument('--lr', type=float, default=1e-4, help='initial learning rate for adam')
         self.parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help='gradient accumulation')
+        self.parser.add_argument("--teacher_forcing",  action='store_true', help="teacher forcing")
 
         # for model
 

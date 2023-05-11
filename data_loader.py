@@ -617,7 +617,8 @@ def get_dataset(opt):
             data.DataLoader(
                 dataset=dataset.train_data,
                 batch_size=1,
-                shuffle=True
+                shuffle=True,
+                generator=util.global_generator()
             ),
             data.DataLoader(
                 dataset=dataset.test_data,

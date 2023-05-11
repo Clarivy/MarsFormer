@@ -318,6 +318,13 @@ class NPFAVerticeDataset(NPFABaseDataset):
             return True
         return False
 
+
+class NPFARavdessDataset(NPFAVerticeDataset):
+    
+    def __init__(self, opt):
+        super().__init__(opt)
+        self.data_pattern = os.path.join(self.phase_data_root, "*/*/*.wav")
+
 class NoStyleDataset(NPFABaseDataset):
     
     def __getitem__(self, index):

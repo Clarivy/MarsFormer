@@ -213,11 +213,12 @@ class NPFAVerticeDataset(NPFABaseDataset):
 
     def __init__(self, opt):
         super().__init__(opt)
+        self.data_pattern = os.path.join(self.phase_data_root, "*/*.wav")
     
     def initialize(self):
         
         # Find all data files
-        self.data_dirs = list(sorted(glob.glob(os.path.join(self.phase_data_root, "*/*.wav"))))
+        self.data_dirs = list(sorted(glob.glob(self.data_pattern)))
 
         # Check if data exists
         if len(self.data_dirs) == 0:

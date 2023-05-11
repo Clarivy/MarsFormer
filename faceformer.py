@@ -101,7 +101,7 @@ class Faceformer(nn.Module):
         nn.init.constant_(self.vertice_map_r.weight, 0)
         nn.init.constant_(self.vertice_map_r.bias, 0)
 
-    def forward(self, audio, vertice, template, one_hot, criterion):
+    def forward(self, audio, vertice, template, one_hot, criterion, teacher_forcing=False):
         # tgt_mask: :math:`(T, T)`.
         # memory_mask: :math:`(T, S)`.
         if template is not None:
@@ -113,20 +113,33 @@ class Faceformer(nn.Module):
 
         negative_penalty = torch.tensor(0.).cuda()
 
-        for i in range(frame_num):
-            if i==0:
-                vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
-                style_emb = vertice_emb
-                vertice_input = self.PPE(style_emb)
-            else:
-                vertice_input = self.PPE(vertice_emb)
+        if teacher_forcing:
+            vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
+            style_emb = vertice_emb  
+            vertice_input = torch.cat((template,vertice[:,:-1]), 1) # shift one position
+            vertice_input = vertice_input - template
+            vertice_input = self.vertice_map(vertice_input)
+            vertice_input = vertice_input + style_emb
+            vertice_input = self.PPE(vertice_input)
             tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
             memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1])
             vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
             vertice_out = self.vertice_map_r(vertice_out)
-            new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
-            new_output = new_output + style_emb
-            vertice_emb = torch.cat((vertice_emb, new_output), 1)
+        else:
+            for i in range(frame_num):
+                if i==0:
+                    vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
+                    style_emb = vertice_emb
+                    vertice_input = self.PPE(style_emb)
+                else:
+                    vertice_input = self.PPE(vertice_emb)
+                tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
+                memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1])
+                vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
+                vertice_out = self.vertice_map_r(vertice_out)
+                new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
+                new_output = new_output + style_emb
+                vertice_emb = torch.cat((vertice_emb, new_output), 1)
 
         # When predicting motion
         if template is not None:

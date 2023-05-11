@@ -63,13 +63,22 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
             iter_start_time = time.time()
         total_steps += 1
         epoch_iter += 1
+        # teacher forcing
+        teacher_forcing = False
+        if opt.teacher_forcing:
+            teacher_forcing_ratio = max(0.8 - epoch / opt.epoch_num, 0)
+            if(torch.rand(1) < teacher_forcing_ratio):
+                teacher_forcing = True
+            else:
+                teacher_forcing = False
+
 
         # collect input data from data loader
         data = util.to_cuda(total_data)
         audio, vertice, template, one_hot = data['audio'], data['vertice'], data['template'], data['one_hot']
 
         ############## Forward Pass ######################
-        losses = model(audio, vertice, template, one_hot, criterion)
+        losses = model(audio, vertice, template, one_hot, criterion, teacher_forcing)
 
         ############### Backward Pass ####################
         optimizer.zero_grad()
@@ -105,6 +114,7 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
             audio, vertice, template, one_hot = data['audio'], data['vertice'], data['template'], data['one_hot']
 
             ############## Forward Pass ######################
+            #No teacher forcing in eval
             losses = model(audio, vertice, template, one_hot, criterion)
 
             ############## Display results and errors ##########

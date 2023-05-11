@@ -8,6 +8,7 @@ import random
 from torch.utils import data
 
 GLOBAL_SEED = 3407
+GLOBAL_GENERATOR = torch.Generator()
 
 # Converts a Tensor into a Numpy array
 # |imtype|: the desired type of the converted numpy array
@@ -140,9 +141,13 @@ def enable_reproducibility(random_seed = 3407):
     torch.cuda.manual_seed_all(random_seed)
     random.seed(random_seed)
     GLOBAL_SEED = random_seed
+    GLOBAL_GENERATOR.manual_seed(GLOBAL_SEED)
 
 def global_seed():
     return GLOBAL_SEED
+
+def global_generator():
+    return GLOBAL_GENERATOR
 
 def split_dataset(dataset):
     total_dataset_size = len(dataset)

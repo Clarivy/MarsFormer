@@ -116,11 +116,16 @@ class Faceformer(nn.Module):
         if teacher_forcing:
             vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
             style_emb = vertice_emb  
-            vertice_input = torch.cat((template,vertice[:,:-1]), 1) # shift one position
-            vertice_input = vertice_input - template
-            vertice_input = self.vertice_map(vertice_input)
-            vertice_input = vertice_input + style_emb
-            vertice_input = self.PPE(vertice_input)
+            if template is not None:
+                vertice_input = torch.cat((template,vertice[:,:-1]), 1) # shift one position
+                vertice_input = vertice_input - template
+                vertice_input = self.vertice_map(vertice_input)
+                vertice_input = vertice_input + style_emb
+                vertice_input = self.PPE(vertice_input)
+            else:
+                vertice_input = self.vertice_map(vertice)
+                vertice_input = vertice_input + style_emb
+                vertice_input = self.PPE(vertice_input)
             tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
             memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1])
             vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)

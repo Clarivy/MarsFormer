@@ -705,6 +705,44 @@ class MixDataset(NPFABaseDataset):
         # Split to two set when training
         if self.isTrain:
             self.train_data, self.test_data = util.split_dataset(self)
+
+class MixVocaDataset(NPFABaseDataset):
+    def __init__(self, opt):
+        super().__init__(opt)
+        opt.dataroot = opt.mix_dataroot
+        opt.train_subjects = opt.mix_train_subjects
+        opt.vertice_dim=42186
+        self.mixdataset = MixDataset(opt)
+        opt.dataroot = opt.voca_dataroot
+        opt.train_subjects = opt.voca_train_subjects
+        self.uscvocadataset = USCVocaDataset(opt)
+        opt.train_subjects = opt.voca_train_subjects + opt.mix_train_subjects
+        opt.vertice_dim=27687
+
+    def initialize(self):
+        self.mixdataset.initialize()
+        self.uscvocadataset.initialize()
+        for data_item in self.mixdataset.data:
+            data_item['one_hot'] = torch.nn.functional.pad(data_item['one_hot'],pad=(0,len(self.uscvocadataset.data[0]['one_hot'])))
+            data_item['vertice'] = data_item['vertice'][:,:27687]
+            data_item['template'] = data_item['template'][:27687]
+        for data_item in self.uscvocadataset.data:
+            data_item['one_hot'] = torch.nn.functional.pad(data_item['one_hot'],pad=(1,0))
+            
+        self.data = self.mixdataset.data + self.uscvocadataset.data
+        
+        if self.isTrain:
+            mix_train_data, mix_test_data = util.split_dataset(self.mixdataset)
+            uscvoca_train_data, uscvoca_test_data = util.split_dataset(self.uscvocadataset)
+            self.train_data = mix_train_data + uscvoca_train_data
+            self.test_data = mix_test_data + uscvoca_test_data
+
+    def get_identity(self):
+        identity_dict = {}
+        mix_identity_dict = self.mixdataset.get_identity()
+        uscvoca_identity_dict = self.uscvocadataset.get_identity()
+        identity_dict = mix_identity_dict + uscvoca_identity_dict
+
 def get_dataset(opt):
     # Load dataset by option
     Dataset = globals()[opt.dataset]

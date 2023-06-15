@@ -3,7 +3,7 @@ export PYOPENGL_PLATFORM=osmesa
 export MUJOCO_GL=osmesa
 python demo.py \
 --model_name vocaset \
---wav_path demo/wav/chn_female_Audio2Face.wav \
+--wav_path demo/wav/aboc_clip.wav \
 --output_file ./chn10.mp4 \
 --dataset vocaset \
 --vertice_dim 42186 \

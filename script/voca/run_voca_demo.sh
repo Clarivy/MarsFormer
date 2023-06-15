@@ -2,8 +2,8 @@ export PYOPENGL_PLATFORM=osmesa
 export MUJOCO_GL=osmesa
 python demo.py \
 --model_name vocaset \
---wav_path demo/wav/en_female.wav \
---output_file ./demo/output/en_female_voca_tf.mp4 \
+--wav_path demo/wav/maggie_clip.wav \
+--output_file ./demo/output/maggie_clip_voca.mp4 \
 --dataset vocaset \
 --vertice_dim 15069 \
 --feature_dim 64 \

@@ -8,7 +8,6 @@ import random
 from torch.utils import data
 
 GLOBAL_SEED = 3407
-GLOBAL_GENERATOR = torch.Generator()
 
 # Converts a Tensor into a Numpy array
 # |imtype|: the desired type of the converted numpy array
@@ -147,7 +146,7 @@ def global_seed():
     return GLOBAL_SEED
 
 def global_generator():
-    return GLOBAL_GENERATOR
+    return torch.Generator().manual_seed(global_seed())
 
 def split_dataset(dataset):
     total_dataset_size = len(dataset)
@@ -156,6 +155,6 @@ def split_dataset(dataset):
     [train_data, test_data] = data.random_split(
         dataset,
         [train_dataset_size, test_dataset_size],
-        torch.Generator().manual_seed(global_seed())
+        global_generator()
     )
     return train_data, test_data

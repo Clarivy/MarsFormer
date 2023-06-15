@@ -627,6 +627,84 @@ class VocaDataset2(NPFABaseDataset):
         #     self.train_data, self.test_data = NPFABaseDataset.split(self.data)
 
 
+class MixDataset(NPFABaseDataset):
+    
+    def __init__(self, opt):
+        super().__init__(opt)
+        with open(opt.mix_config, 'r') as f:
+            self.subdatasets:list[dict] = json.load(f)
+    
+    def initialize(self):
+        # Load identities
+        self.identity_dict = self.get_identity()
+
+        self.one_hot_labels = torch.eye(len(self.train_subjects), dtype=torch.float) # (num_identities, num_identities)
+
+        # Load data to memory
+        for subdataset in self.subdatasets:
+            subdataset_name = subdataset['name']
+            subdataset_glob = subdataset['glob']
+            subdataset_count = 0
+            subdataset_dir = os.path.join(self.phase_data_root, subdataset_glob)
+            print(f"Loading {subdataset_name} at path {subdataset_dir}")
+            
+            data_dirs = sorted(list(glob.glob(subdataset_dir)))
+            data_dirs = list(set(map(lambda filepath: os.path.dirname(filepath), data_dirs)))
+
+            for data_dir in tqdm(data_dirs, desc='Loading data'):
+                # Get the directory name of each data file
+                audio_dir = os.path.join(data_dir, "audio.wav")
+                source_name = os.path.basename(data_dir)
+                # Load audio
+                speech_array, sampling_rate = librosa.load(audio_dir, sr=16000)
+                # Normalize
+                max_peak = np.max(np.abs(speech_array))
+                # -6db
+                ratio = 0.5 / max_peak
+                normalized_speech = speech_array * ratio
+
+                wav_data = torch.FloatTensor(np.squeeze(self.processor(normalized_speech,sampling_rate=16000).input_values))
+                
+                vertices_30fps_dirs = list(sorted(glob.glob(os.path.join(data_dir, '*/mesh_pred_all_vs_30fps.npy'))))
+                vertices_60fps_dirs = list(sorted(glob.glob(os.path.join(data_dir, '*/mesh_pred_all_vs_60fps.npy'))))
+                if len(vertices_30fps_dirs) + len(vertices_60fps_dirs) == 0:
+                    raise Exception("Find empty data directory at {}".format(data_dir))
+
+                for vertices_dir in vertices_30fps_dirs + vertices_60fps_dirs:
+                    # Load template
+                    identity_name = os.path.basename(os.path.dirname(vertices_dir))
+                    if self.identity_dict.get(identity_name) is None:
+                        continue
+                    identity_index, identity_neutral = self.identity_dict[identity_name]
+
+                    # Load vertices
+                    vertices_data = torch.FloatTensor(np.load(vertices_dir)).flatten(1) / 100 # (frame_num, 14062 * 3)
+                    # Skip every other frame if the fps is 60
+                    if "60fps" in os.path.basename(vertices_dir):
+                        vertices_data = vertices_data[::2] 
+                    # Check if the number of vertices is correct
+                    if vertices_data.shape[1] != self.vertice_dim:
+                        raise Exception(f"Number of vertices in {vertices_dir} is not correct, expect {self.vertice_dim}, but read {vertices_data.shape[1]}")
+                    
+                    # vertices_data = (vertices_data - identity_neutral).clone.detach()
+                    data_item = {
+                        'audio'   : wav_data,
+                        'vertice' : vertices_data,
+                        'template': identity_neutral,
+                        'one_hot' : self.one_hot_labels[identity_index],
+                        'identity_name': identity_name,
+                        'audio_dir': audio_dir,
+                        'vertices_dir': vertices_dir,
+                        'data_dir': data_dir,
+                        'source_name': source_name
+                    }
+                    self.data.append(data_item)
+                    subdataset_count += 1
+            print(f"Loaded {subdataset_count} items in {subdataset_name} ")
+        
+        # Split to two set when training
+        if self.isTrain:
+            self.train_data, self.test_data = util.split_dataset(self)
 def get_dataset(opt):
     # Load dataset by option
     Dataset = globals()[opt.dataset]

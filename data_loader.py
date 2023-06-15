@@ -51,7 +51,7 @@ def read_data(args):
 
     audio_path = os.path.join(args.dataset, args.wav_path)
     vertices_path = os.path.join(args.dataset, args.vertices_path)
-    processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+    processor = Wav2Vec2Processor.from_pretrained("./facebook/wav2vec_processor")
 
     template_file = os.path.join(args.dataset, args.template_file)
     with open(template_file, 'rb') as fin:
@@ -144,7 +144,7 @@ class NPFABaseDataset(data.Dataset):
         self.valid_subjects:list = opt.valid_subjects
         if self.phase == 'valid':
             self.condition_subject = opt.condition_subject
-        self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+        self.processor = Wav2Vec2Processor.from_pretrained("./facebook/wav2vec_processor")
         self.data = []
         if self.isTrain:
             self.train_data = []
@@ -456,7 +456,7 @@ class VocaDataset(NPFABaseDataset):
         self.train_subjects:list = opt.train_subjects
         self.audio_path = os.path.join(self.dataroot, "wav")
         self.vertices_path = os.path.join(self.dataroot, "vertices_npy")
-        self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+        self.processor = Wav2Vec2Processor.from_pretrained("./facebook/wav2vec_processor")
         self.template_file = os.path.join(self.dataroot, "templates.pkl")
         self.one_hot_labels = torch.eye(len(self.train_subjects), dtype=torch.float) # (num_identities, num_identities)
         self.data = []
@@ -535,7 +535,7 @@ class VocaDataset2(NPFABaseDataset):
         self.test_subjects:list = opt.test_subjects
         self.audio_path = os.path.join(self.dataroot, "wav")
         self.vertices_path = os.path.join(self.dataroot, "vertices_npy")
-        self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+        self.processor = Wav2Vec2Processor.from_pretrained("./facebook/wav2vec_processor")
         self.template_file = os.path.join(self.dataroot, "templates.pkl")
         self.one_hot_labels = torch.eye(len(self.train_subjects), dtype=torch.float) # (num_identities, num_identities)
         self.data = []

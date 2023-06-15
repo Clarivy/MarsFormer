@@ -331,6 +331,16 @@ class NoStyleDataset(NPFABaseDataset):
             "one_hot": self.one_hot_labels[0]
         }
 
+class FilterFaceDataset(NPFABaseDataset):
+    def __getitem__(self, index):
+        data = super().__getitem__(index)
+        return {
+            **data,
+            'vertice': data['vertice'][:,:27687],
+            'template': data['template'][:27687]
+        }
+
+
 class NPFAVerticeNoStyleDataset(NoStyleDataset, NPFAVerticeDataset):
     pass
 
@@ -519,6 +529,14 @@ class VocaDataset(NPFABaseDataset):
         # Split to two set when training
         if self.isTrain:
             self.train_data, self.test_data = util.split_dataset(self)
+
+class USCVocaDataset(FilterFaceDataset, VocaDataset):
+    def __init__(self, opt):
+        super().__init__(opt)
+        self.vertice_dim = 42186 # For checking USC vertice_dim
+        self.vertices_path = os.path.join(self.dataroot, "vertices_npy_usc")
+        self.template_file = os.path.join(self.dataroot, "usc_templates.pkl")
+
 
 # By C3 MRO, __get_item__ in VocaDataset will be override by NoStyleDataset
 class VocaNoStyleDataset(NoStyleDataset, VocaDataset):

@@ -28,6 +28,10 @@ class BaseOptions():
         self.parser.add_argument('--dataroot', type=str, default='./data/GNPFA/') 
         self.parser.add_argument('--dataset', type=str, default='NPFAVerticeDataset', help='Name of dataset') 
         self.parser.add_argument('--facial_mask', type=str, required=False) 
+        self.parser.add_argument('--voca_dataroot', type=str, required=False)
+        self.parser.add_argument('--voca_train_subjects', type=str, required=False)
+        self.parser.add_argument('--mix_dataroot', type=str, required=False)
+        self.parser.add_argument('--mix_train_subjects', type=str, required=False)
 
         # for dataset dividing
         self.parser.add_argument("--train_subjects", type=str, default=
@@ -55,6 +59,10 @@ class BaseOptions():
         self.opt.isTrain = self.isTrain   # train or test
         self.opt.train_subjects = BaseOptions.split_subjects(self.opt.train_subjects)
         self.opt.valid_subjects = BaseOptions.split_subjects(self.opt.valid_subjects)
+        if self.opt.voca_train_subjects:
+            self.opt.voca_train_subjects = BaseOptions.split_subjects(self.opt.voca_train_subjects)
+        if self.opt.mix_train_subjects:
+            self.opt.mix_train_subjects = BaseOptions.split_subjects(self.opt.mix_train_subjects)
 
         self.opt.gpu_id = int(self.opt.gpu_id)
         torch.cuda.set_device(self.opt.gpu_id)

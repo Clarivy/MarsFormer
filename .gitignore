@@ -138,3 +138,6 @@ vis/
 checkpoints/
 checkpoints_old/
 facebook/
+
+# Testing
+*.ipynb

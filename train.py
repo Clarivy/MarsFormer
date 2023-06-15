@@ -75,7 +75,12 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
 
         # collect input data from data loader
         data = util.to_cuda(total_data)
-        audio, vertice, template, one_hot = data['audio'], data['vertice'], data['template'], data['one_hot']
+        audio, vertice, template, one_hot = (data.get(key) for key in [
+            "audio",
+            "vertice",
+            "template",
+            "one_hot"
+        ])
 
         ############## Forward Pass ######################
         losses = model(audio, vertice, template, one_hot, criterion, teacher_forcing)
@@ -111,7 +116,12 @@ for epoch in range(start_epoch, opt.epoch_num + 1):
 
             # collect input data from data loader
             data = util.to_cuda(total_data)
-            audio, vertice, template, one_hot = data['audio'], data['vertice'], data['template'], data['one_hot']
+            audio, vertice, template, one_hot = (data.get(key) for key in [
+                "audio",
+                "vertice",
+                "template",
+                "one_hot"
+            ])
 
             ############## Forward Pass ######################
             #No teacher forcing in eval

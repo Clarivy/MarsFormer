@@ -41,6 +41,7 @@ class BaseOptions():
         self.parser.add_argument("--valid_subjects", type=str, default=
             "Ada_OURuv_aligned "
         )
+        self.parser.add_argument('--mix_config', type=str, default='data/config/mix_config.json', help='MixDataset configuration path')
 
         self.initialized = True
     

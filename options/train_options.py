@@ -20,6 +20,4 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help='gradient accumulation')
         self.parser.add_argument("--teacher_forcing",  action='store_true', help="teacher forcing")
 
-        # for model
-
         self.isTrain = True

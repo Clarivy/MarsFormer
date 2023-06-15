@@ -5,6 +5,7 @@ import numpy as np
 import copy
 import math
 from wav2vec import Wav2Vec2Model
+from whisper import WhisperModel
 from data_loader import load_base_model, load_vertices
 import os
 
@@ -96,6 +97,7 @@ class Faceformer(nn.Module):
         self.obj_vector = nn.Linear(len(opt.train_subjects), opt.feature_dim, bias=False)
         self.activation_func = nn.LeakyReLU(negative_slope=opt.neg_penalty)
 
+        self.max_lex = opt.max_len
         
         # TODO: Wether initialize the base_map_r
         nn.init.constant_(self.vertice_map_r.weight, 0)
@@ -162,13 +164,13 @@ class Faceformer(nn.Module):
         return losses
 
     def predict(self, audio, template, one_hot):
+        max_len = self.max_lex
         if template is not None:
             template = template.unsqueeze(1) # (1,1, V*3)
         obj_embedding = self.obj_vector(one_hot)
         hidden_states = self.audio_encoder(audio).last_hidden_state
         frame_num = hidden_states.shape[1]
         hidden_states = self.audio_feature_map(hidden_states)
-
         for i in range(frame_num):
             if i==0:
                 vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
@@ -177,17 +179,29 @@ class Faceformer(nn.Module):
             else:
                 vertice_input = self.PPE(vertice_emb)
 
-            tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
-            memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1])
-            vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
-            vertice_out = self.vertice_map_r(vertice_out)
-            new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
-            new_output = new_output + style_emb
-            vertice_emb = torch.cat((vertice_emb, new_output), 1)
+            
+            if i < max_len-1:
+                tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
+                memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1])
+                vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
+                vertice_out = self.vertice_map_r(vertice_out)
+                vertice_out_all = copy.deepcopy(vertice_out)
+                new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
+                new_output = new_output + style_emb
+                vertice_emb = torch.cat((vertice_emb, new_output), 1)
+            else:
+                tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().cuda()
+                memory_mask = enc_dec_mask(vertice_input.shape[1], hidden_states.shape[1]-(i-max_len+1))
+                vertice_out = self.transformer_decoder(vertice_input, hidden_states[:,i-max_len+1:,:], tgt_mask=tgt_mask, memory_mask=memory_mask)
+                vertice_out = self.vertice_map_r(vertice_out)
+                vertice_out_all = torch.cat((vertice_out_all, vertice_out[:,-1,:].unsqueeze(1)), 1)
+                new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
+                new_output = new_output + style_emb
+                vertice_emb = torch.cat((vertice_emb[:,1:,:], new_output), 1)
 
         if template is not None:
-            vertice_out = vertice_out + template
-        return vertice_out
+            vertice_out_all = vertice_out_all + template
+        return vertice_out_all
     
     def get_facial_area(self, vertice: torch.Tensor):
         if self.facial_mask == None:

@@ -172,7 +172,30 @@ class NPFABaseDataset(data.Dataset):
         # print(source_name)
         assert len(target_list) == 1
         return target_list[0]['speaker']
-
+    
+    def get_identity(self):
+        identity_dict = {}
+        identity_dirs = list(sorted(glob.glob(os.path.join(self.dataroot, 'identity', '*.npy'))))  
+        if len(identity_dirs) == 0:
+            raise Exception("No identities found in: {}".format(self.dataroot))
+        if self.phase == 'valid':
+            self.condition_index = self.train_subjects.index(self.condition_subject)
+        identity_count = 0
+        for identity_dir in identity_dirs:
+            identity_name = Path(os.path.basename(identity_dir)).stem
+            if self.use_identity(identity_name):
+                identity_dict[identity_name] = (
+                    identity_count if self.phase != 'valid' else self.condition_index,
+                    torch.FloatTensor(np.load(identity_dir)[0]).flatten(0) / 100, # (14062 * 3,)
+                )
+                identity_count += 1
+        if identity_count == 0:
+            raise Exception("No identities found for {} mode in: {}".format(self.phase, self.dataroot))
+        if self.phase == "train" or self.phase == 'debug':
+            if identity_count != len(self.train_subjects):
+                raise Exception(f"Number of identities found for {self.phase} mode in {self.dataroot} is not equal to the number of subjects specified in the option. Expect {self.train_subjects}, but found identities: {identity_dict.keys()}")
+        return identity_dict
+    
     def clip(vertice, start, end, audio):
         vertice_frame_num = vertice.shape[0]
         audio_frame_num = audio.shape[0]
@@ -206,7 +229,12 @@ class NPFABaseDataset(data.Dataset):
             }
         return self.data[index]
     
-
+    def use_identity(self, identity_name):
+        if (self.phase == 'train' or self.phase == 'debug') and (identity_name in self.train_subjects):
+            return True
+        if self.phase == 'valid' and identity_name in self.valid_subjects:
+            return True
+        return False
     
 
 class NPFAVerticeDataset(NPFABaseDataset):
@@ -223,32 +251,12 @@ class NPFAVerticeDataset(NPFABaseDataset):
         # Check if data exists
         if len(self.data_dirs) == 0:
             raise Exception("No data found in: {}".format(self.phase_data_root))
+        
+        # Load identities
+        self.identity_dict = self.get_identity()
 
         # Get the directory name of each data file
         self.data_dirs = list(set(map(lambda filepath: os.path.dirname(filepath), self.data_dirs)))
-
-        # Load identities
-        self.identity_dict = {}
-        self.identity_dirs = list(sorted(glob.glob(os.path.join(self.dataroot, 'identity', '*.npy'))))  
-        if len(self.identity_dirs) == 0:
-            raise Exception("No identities found in: {}".format(self.dataroot))
-        if self.phase == 'valid':
-            self.condition_index = self.train_subjects.index(self.condition_subject)
-        identity_count = 0
-        for identity_dir in self.identity_dirs:
-            identity_name = Path(os.path.basename(identity_dir)).stem
-            if self.use_identity(identity_name):
-                self.identity_dict[identity_name] = (
-                    identity_count if self.phase != 'valid' else self.condition_index,
-                    torch.FloatTensor(np.load(identity_dir)[0]).flatten(0) / 100, # (14062 * 3,)
-                )
-                identity_count += 1
-        if identity_count == 0:
-            raise Exception("No identities found for {} mode in: {}".format(self.phase, self.dataroot))
-
-        if self.phase == "train" or self.phase == 'debug':
-            if identity_count != len(self.train_subjects):
-                raise Exception(f"Number of identities found for {self.phase} mode in {self.dataroot} is not equal to the number of subjects specified in the option. Expect {self.train_subjects}, but found identities: {self.identity_dict.keys()}")
         self.one_hot_labels = torch.eye(len(self.train_subjects), dtype=torch.float) # (num_identities, num_identities)
 
         # Load data to memory
@@ -306,17 +314,6 @@ class NPFAVerticeDataset(NPFABaseDataset):
         # Split to two set when training
         if self.isTrain:
             self.train_data, self.test_data = util.split_dataset(self)
-    
-    @property
-    def identity_num(self):
-        return len(self.identity_dict)
-
-    def use_identity(self, identity_name):
-        if (self.phase == 'train' or self.phase == 'debug') and (identity_name in self.train_subjects):
-            return True
-        if self.phase == 'valid' and identity_name in self.valid_subjects:
-            return True
-        return False
 
 
 class NPFARavdessDataset(NPFAVerticeDataset):

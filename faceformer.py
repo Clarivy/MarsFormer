@@ -5,7 +5,6 @@ import numpy as np
 import copy
 import math
 from wav2vec import Wav2Vec2Model
-from whisper import WhisperModel
 from data_loader import load_base_model, load_vertices
 import os
 

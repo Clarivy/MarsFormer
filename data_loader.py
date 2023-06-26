@@ -336,8 +336,8 @@ class FilterFaceDataset(NPFABaseDataset):
         data = super().__getitem__(index)
         return {
             **data,
-            'vertice': data['vertice'][:,:27687],
-            'template': data['template'][:27687]
+            'vertice': data['vertice'][:,:28224],
+            'template': data['template'][:28224]
         }
 
 
@@ -717,15 +717,15 @@ class MixVocaDataset(NPFABaseDataset):
         opt.train_subjects = opt.voca_train_subjects
         self.uscvocadataset = USCVocaDataset(opt)
         opt.train_subjects = opt.voca_train_subjects + opt.mix_train_subjects
-        opt.vertice_dim=27687
+        opt.vertice_dim=28224
 
     def initialize(self):
         self.mixdataset.initialize()
         self.uscvocadataset.initialize()
         for data_item in self.mixdataset.data:
             data_item['one_hot'] = torch.nn.functional.pad(data_item['one_hot'],pad=(0,len(self.uscvocadataset.data[0]['one_hot'])))
-            data_item['vertice'] = data_item['vertice'][:,:27687]
-            data_item['template'] = data_item['template'][:27687]
+            data_item['vertice'] = data_item['vertice'][:,:28224]
+            data_item['template'] = data_item['template'][:28224]
         for data_item in self.uscvocadataset.data:
             data_item['one_hot'] = torch.nn.functional.pad(data_item['one_hot'],pad=(1,0))
             

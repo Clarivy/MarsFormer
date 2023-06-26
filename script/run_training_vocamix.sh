@@ -1,10 +1,10 @@
 set PYTHONPATH=..
 python train.py\
-    --name mixvoca_neu_lr1e-4_tf_cremad_neu+voca \
+    --name mixvoca_neu_lr1e-4_tf_cremad_neu+voca_fix_ver_dim \
     --dataset MixVocaDataset \
     --gpu_id 1 \
     --dataroot data/GNPFA_mix \
-    --vertice_dim 27687 \
+    --vertice_dim 28224 \
     --mix_dataroot data/GNPFA_mix \
     --mix_train_subjects TaylorSwift \
     --voca_dataroot ./vocaset/ \

@@ -6,7 +6,7 @@ python demo.py \
 --wav_path demo/wav/maggie_clip.wav \
 --output_file ./demo/output/maggie_clip_all.mp4 \
 --dataset vocaset \
---vertice_dim 27687 \
+--vertice_dim 28224 \
 --feature_dim 64 \
 --period 30 \
 --fps 30 \

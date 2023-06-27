@@ -139,8 +139,8 @@ def enable_reproducibility(random_seed = 3407):
     torch.manual_seed(random_seed)
     torch.cuda.manual_seed_all(random_seed)
     random.seed(random_seed)
+    global GLOBAL_SEED
     GLOBAL_SEED = random_seed
-    GLOBAL_GENERATOR.manual_seed(GLOBAL_SEED)
 
 def global_seed():
     return GLOBAL_SEED

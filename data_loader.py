@@ -315,6 +315,84 @@ class NPFAVerticeDataset(NPFABaseDataset):
         if self.isTrain:
             self.train_data, self.test_data = util.split_dataset(self)
 
+class NPFABSDataset(NPFABaseDataset):
+
+    def __init__(self, opt):
+        super().__init__(opt)
+        self.data_pattern = os.path.join(self.phase_data_root, "*NEU*/*.wav")
+        # self.data_pattern = os.path.join(self.phase_data_root, "*neutral*/*.wav")
+    
+    def initialize(self):
+        
+        # Find all data files
+        self.data_dirs = list(sorted(glob.glob(self.data_pattern)))
+
+        # Check if data exists
+        if len(self.data_dirs) == 0:
+            raise Exception("No data found in: {}".format(self.phase_data_root))
+        
+        # Load identities
+        self.identity_dict = self.get_identity()
+
+        # Get the directory name of each data file
+        self.data_dirs = list(set(map(lambda filepath: os.path.dirname(filepath), self.data_dirs)))
+        self.one_hot_labels = torch.eye(len(self.train_subjects), dtype=torch.float) # (num_identities, num_identities)
+
+        # Load data to memory
+        self.data = []
+        for data_dir in tqdm(self.data_dirs, desc='Loading data'):
+            # Get the directory name of each data file
+            audio_dir = os.path.join(data_dir, "audio.wav")
+            source_name = os.path.basename(data_dir)
+            # speaker_name = self.find_speaker(source_name)
+            # if speaker_name is None:
+            #     raise Exception("No speaker info found for {}".format(source_name))
+            # else:
+            #     if speaker_name != "chn_female_1":
+            #         continue
+            
+            # Load audio
+            speech_array, sampling_rate = librosa.load(audio_dir, sr=16000)
+            wav_data = torch.FloatTensor(np.squeeze(self.processor(speech_array,sampling_rate=16000).input_values))
+            
+            vertices_30fps_dirs = list(sorted(glob.glob(os.path.join(data_dir, '*/bs_30fps.npy'))))
+            vertices_60fps_dirs = list(sorted(glob.glob(os.path.join(data_dir, '*/bs_60fps.npy'))))
+            if len(vertices_30fps_dirs) + len(vertices_60fps_dirs) == 0:
+                raise Exception("Find empty data directory at {}".format(data_dir))
+
+            for vertices_dir in vertices_30fps_dirs + vertices_60fps_dirs:
+                # Load template
+                identity_name = os.path.basename(os.path.dirname(vertices_dir))
+                if self.identity_dict.get(identity_name) is None:
+                    continue
+                identity_index, identity_neutral = self.identity_dict[identity_name]
+
+                # Load vertices
+                vertices_data = torch.FloatTensor(np.load(vertices_dir)).flatten(1) # (frame_num, 14062 * 3)
+                # Skip every other frame if the fps is 60
+                if "60fps" in os.path.basename(vertices_dir):
+                    vertices_data = vertices_data[::2] 
+                # Check if the number of vertices is correct
+                if vertices_data.shape[1] != self.vertice_dim:
+                    raise Exception(f"Number of vertices in {vertices_dir} is not correct, expect {self.vertice_dim}, but read {vertices_data.shape[1]}")
+                
+                # vertices_data = (vertices_data - identity_neutral).clone.detach()
+                data_item = {
+                    'audio'   : wav_data,
+                    'vertice' : vertices_data,
+                    # 'template': identity_neutral,
+                    'one_hot' : self.one_hot_labels[identity_index],
+                    'identity_name': identity_name,
+                    'audio_dir': audio_dir,
+                    'vertices_dir': vertices_dir,
+                    'data_dir': data_dir,
+                    'source_name': source_name
+                }
+                self.data.append(data_item)
+        
+        # Split to two set when training
+        if self.isTrain:
+            self.train_data, self.test_data = util.split_dataset(self)
 
 class NPFARavdessDataset(NPFAVerticeDataset):
     
@@ -529,6 +607,73 @@ class VocaDataset(NPFABaseDataset):
         # Split to two set when training
         if self.isTrain:
             self.train_data, self.test_data = util.split_dataset(self)
+
+class VocaBSDataset(VocaDataset):
+    
+    def __init__(self, opt):
+        super().__init__(opt)
+        self.vertices_path = os.path.join(self.dataroot, "bs_npy")
+
+    def initialize(self):
+
+        # Load audio
+        for root, dirs, files in os.walk(self.audio_path):
+            for audio_filename in tqdm(files):
+                # if len(self.data) > 10:
+                #     break
+                if audio_filename.endswith("wav"):
+                    # Prepare files to load
+                    wav_path = os.path.join(root, audio_filename)
+                    source_name = Path(os.path.basename(audio_filename)).stem
+                    subject_id = "_".join(source_name.split("_")[:-1])
+                    vertices_dir = os.path.join(self.vertices_path, source_name + '.npy')
+                    if subject_id not in self.train_subjects:
+                        continue
+                    if not os.path.exists(vertices_dir):
+                        continue
+
+                    # Load audio
+                    speech_array, sampling_rate = librosa.load(wav_path, sr=16000)
+                    input_values = np.squeeze(self.processor(speech_array,sampling_rate=16000).input_values)
+
+                    # Load template
+                    # template = template_dict[subject_id]
+
+                    # Load vertices
+                    vertices_data = np.load(vertices_dir,allow_pickle=True)[::2,:]
+                    if vertices_data.shape[1] != self.vertice_dim:
+                        raise Exception(f"Number of vertices in {vertices_dir} is not correct, expect {self.vertice_dim}, but read {vertices_data.shape[1]}")
+                    
+                    one_hot = self.one_hot_labels[self.train_subjects.index(subject_id)]
+
+                    input_values, vertices_data, one_hot = util.to_FloatTensor(
+                        input_values, vertices_data, one_hot
+                    )
+
+                    # template = template.flatten(0)
+
+                    data_item = {
+                        'audio'   : input_values,
+                        'vertice' : vertices_data,
+                        # 'template': template,
+                        'one_hot' : one_hot,
+                        'identity_name': subject_id,
+                        'audio_dir': wav_path,
+                        'vertices_dir': vertices_dir,
+                        'data_dir': wav_path,
+                        'source_name': source_name,
+                    }
+                    self.data.append(data_item)
+
+        # Split to two set when training
+        if self.isTrain:
+            self.train_data, self.test_data = util.split_dataset(self)
+
+class VocaPCADataset(VocaBSDataset):
+    def __init__(self, opt):
+        super().__init__(opt)
+        self.vertices_path = os.path.join(self.dataroot, "pca_npy")
+        
 
 class USCVocaDataset(FilterFaceDataset, VocaDataset):
     def __init__(self, opt):

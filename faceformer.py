@@ -6,6 +6,7 @@ import copy
 import math
 from wav2vec import Wav2Vec2Model
 from data_loader import load_base_model, load_vertices
+from motion import get_inverse_model
 import os
 
 # Temporal Bias, inspired by ALiBi: https://github.com/ofirpress/attention_with_linear_biases
@@ -94,13 +95,26 @@ class Faceformer(nn.Module):
         
         # encoding the template
         self.obj_vector = nn.Linear(len(opt.train_subjects), opt.feature_dim, bias=False)
-        self.activation_func = nn.LeakyReLU(negative_slope=opt.neg_penalty)
+
+        # input("here's a shit\n")
+        # self.obj_vector = nn.Linear(11, opt.feature_dim, bias=False)
 
         self.max_lex = opt.max_len
         
         # TODO: Wether initialize the base_map_r
         nn.init.constant_(self.vertice_map_r.weight, 0)
         nn.init.constant_(self.vertice_map_r.bias, 0)
+
+        if hasattr(opt, 'base_models_path'):
+            self.base_models_path = opt.base_models_path
+            base_models = load_base_model(self.base_models_path, scale=0.01)
+            base_models = base_models[1:] - base_models[0] # - template
+            base_models = base_models.reshape(55, -1)
+            self.base_models = nn.Parameter(torch.tensor(base_models, dtype=torch.float32), requires_grad=False)
+            self.get_vertice = lambda x: x @ self.base_models
+        
+        if hasattr(opt, 'pca_path'):
+            self.pca_inverse = get_inverse_model(opt.pca_path)
 
     def forward(self, audio, vertice, template, one_hot, criterion, teacher_forcing=False):
         # tgt_mask: :math:`(T, T)`.
@@ -111,8 +125,6 @@ class Faceformer(nn.Module):
         obj_embedding = self.obj_vector(one_hot)
         hidden_states = self.audio_encoder(audio, frame_num=frame_num).last_hidden_state
         hidden_states = self.audio_feature_map(hidden_states)
-
-        negative_penalty = torch.tensor(0.).cuda()
 
         if teacher_forcing:
             vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
@@ -153,12 +165,16 @@ class Faceformer(nn.Module):
             vertice_out = self.get_facial_area(vertice_out)
             vertice = self.get_facial_area(vertice)
 
-        loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
+        if hasattr(self, "get_vertice"):
+            loss = criterion(self.get_vertice(vertice_out), self.get_vertice(vertice)) # (batch, seq_len, V*3)
+        if hasattr(self, "pca_inverse"):
+            loss = criterion(self.pca_inverse(vertice_out), self.pca_inverse(vertice))
+        else:
+            loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
         
-        total_loss = torch.mean(loss) - negative_penalty
+        total_loss = torch.mean(loss)
         losses = {
             'total_loss': total_loss,
-            'negative_penalty': negative_penalty,
         }
         return losses
 
@@ -199,6 +215,8 @@ class Faceformer(nn.Module):
                 vertice_emb = torch.cat((vertice_emb[:,1:,:], new_output), 1)
 
         if template is not None:
+            if template.shape[2] != vertice_out_all.shape[2]:
+                vertice_out_all = F.pad(vertice_out_all, (0,template.shape[2]-vertice_out_all.shape[2]))
             vertice_out_all = vertice_out_all + template
         return vertice_out_all
     
@@ -211,7 +229,7 @@ class Faceformer(nn.Module):
 
 def create_model(opt):
     model = Faceformer(opt)
-
+    # model.load_state_dict(torch.load("/data/new_disk/new_disk/pangbai/FaceFormer/FaceFormer/checkpoints/mixvoca_neu_lr1e-4_tf_cremad_neu+voca_fix_ver_dim/latest_model.pth"))
     if (not opt.isTrain) or (opt.continue_train):
         pretrained_path = os.path.join(opt.checkpoints_dir, opt.name)
         model_path = os.path.join(pretrained_path, f'{opt.which_epoch}_model.pth')

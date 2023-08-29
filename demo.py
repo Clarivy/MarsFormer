@@ -19,6 +19,7 @@ os.environ['PYOPENGL_PLATFORM'] = 'osmesa' # egl
 import pyrender
 from psbody.mesh import Mesh
 import trimesh
+from tqdm import tqdm
 
 @torch.no_grad()
 def test_model(args):
@@ -29,7 +30,7 @@ def test_model(args):
     args.train_subjects = BaseOptions.split_subjects(args.train_subjects)
     train_subjects_list = args.train_subjects
     model = Faceformer(args)
-    model.load_state_dict(torch.load(args.model_path))
+    model.load_state_dict(torch.load(os.path.join(args.model_path, args.model_name, f"{args.model_step}_model.pth")))
 
     from faceformer import PeriodicPositionalEncoding, init_biased_mask
     model.PPE = PeriodicPositionalEncoding(args.feature_dim, period = args.period, max_seq_len=args.max_len)
@@ -37,7 +38,7 @@ def test_model(args):
     model = model.to(torch.device(args.device))
     model.eval()
 
-    template_file = os.path.join(args.dataset, args.template_path)
+    template_file = os.path.join("vocaset", args.template_path)
     with open(template_file, 'rb') as fin:
         templates = pickle.load(fin,encoding='latin1')
 
@@ -46,6 +47,9 @@ def test_model(args):
     one_hot = one_hot_labels[iter]
     one_hot = np.reshape(one_hot,(-1,one_hot.shape[0]))
     one_hot = torch.FloatTensor(one_hot).to(device=args.device)
+
+    # input("here is a shit\n")
+    # one_hot = torch.nn.functional.pad(one_hot,pad=(0,10))
 
     if args.model_template is not None:
         print('Load vertices')
@@ -61,9 +65,10 @@ def test_model(args):
     template = np.reshape(template,(-1,template.shape[0]))
     template = torch.FloatTensor(template).to(device=args.device)
 
-    wav_path = args.wav_path
-    test_name = os.path.basename(wav_path).split(".")[0]
-    speech_array, sampling_rate = librosa.load(os.path.join(wav_path), sr=16000)
+    audio_name = os.path.basename(args.wav_path).split(".")[0]
+    output_file = os.path.join(args.result_path, f"{args.model_name}_{args.model_step}_{audio_name}_vert.npy")
+
+    speech_array, sampling_rate = librosa.load(os.path.join(args.wav_path), sr=16000)
     processor = Wav2Vec2Processor.from_pretrained("./facebook/wav2vec_processor")
     audio_feature = np.squeeze(processor(speech_array,sampling_rate=16000).input_values)
     audio_feature = np.reshape(audio_feature,(-1,audio_feature.shape[0]))
@@ -72,18 +77,14 @@ def test_model(args):
     prediction = model.predict(audio_feature, template, one_hot)
     print("predict:"+str(time.time()-start))
     prediction = prediction.squeeze() # (seq_len, V*3)
-    np.save(os.path.join(args.result_path, test_name), prediction.detach().cpu().numpy())
+    print(f"Saving to {output_file} with shape {prediction.shape}")
+    np.save(output_file, prediction.detach().cpu().numpy())
 
 # The implementation of rendering is borrowed from VOCA: https://github.com/TimoBolkart/voca/blob/master/utils/rendering.py
 def render_mesh_helper(args,mesh, t_center, rot=np.zeros(3), tex_img=None, z_offset=0):
-    if args.dataset == "BIWI":
-        camera_params = {'c': np.array([400, 400]),
-                         'k': np.array([-0.19816071, 0.92822711, 0, 0, 0]),
-                         'f': np.array([4754.97941935 / 8, 4754.97941935 / 8])}
-    elif args.dataset == "vocaset":
-        camera_params = {'c': np.array([400, 400]),
-                         'k': np.array([-0.19816071, 0.92822711, 0, 0, 0]),
-                         'f': np.array([4754.97941935 / 2, 4754.97941935 / 2])}
+    camera_params = {'c': np.array([400, 400]),
+                        'k': np.array([-0.19816071, 0.92822711, 0, 0, 0]),
+                        'f': np.array([4754.97941935 / 2, 4754.97941935 / 2])}
 
     frustum = {'near': 0.01, 'far': 3.0, 'height': 800, 'width': 800}
 
@@ -155,34 +156,30 @@ def render_mesh_helper(args,mesh, t_center, rot=np.zeros(3), tex_img=None, z_off
     return color[..., ::-1]
 
 def render_sequence(args):
-    wav_path = args.wav_path
-    test_name = os.path.basename(wav_path).split(".")[0]
-    predicted_vertices_path = os.path.join(args.result_path,test_name+".npy")
-    if args.dataset == "BIWI":
-        template_file = os.path.join(args.dataset, args.render_template_path, "BIWI.ply")
-    elif args.dataset == "vocaset":
-        if args.base_model_path is not None:
-            template_file = args.base_template
-        else:
-            template_file = args.render_template_path
+    wav_name = os.path.basename(args.wav_path).split(".")[0]
+    template_file = args.render_template_path
+    predicted_vertices_path = os.path.join(args.result_path, f"{args.model_name}_{args.model_step}_{wav_name}_vert.npy")
+    video_fname = os.path.join(args.result_path, f"{args.model_name}_{args.model_step}_{wav_name}.mp4")
+
+    if args.base_model_path is not None:
+        template_file = args.base_template
+    else:
+        template_file = args.render_template_path
          
-    print("rendering: ", test_name)
+    print("rendering: ", wav_name)
                  
     template = Mesh(filename=template_file)
     predicted_vertices = np.load(predicted_vertices_path)
-    predicted_vertices = np.reshape(predicted_vertices,(-1,args.vertice_dim//3,3))
-
-    output_path = os.path.dirname(args.output_file)
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
+    # predicted_vertices = np.reshape(predicted_vertices,(-1,args.vertice_dim//3,3))
+    predicted_vertices = np.reshape(predicted_vertices,(-1,42186//3,3))
 
     num_frames = predicted_vertices.shape[0]
-    tmp_video_file = tempfile.NamedTemporaryFile('w', suffix='.mp4', dir=output_path)
+    tmp_video_file = tempfile.NamedTemporaryFile('w', suffix='.mp4', dir=args.result_path)
     
     writer = cv2.VideoWriter(tmp_video_file.name, cv2.VideoWriter_fourcc(*'mp4v'), args.fps, (800, 800), True)
     center = np.mean(predicted_vertices[0], axis=0)
 
-    for i_frame in range(num_frames):
+    for i_frame in tqdm(range(num_frames)):
         render_mesh = Mesh(predicted_vertices[i_frame], template.f)
         pred_img = render_mesh_helper(args,render_mesh, center)
         pred_img = pred_img.astype(np.uint8)
@@ -190,18 +187,14 @@ def render_sequence(args):
 
     writer.release()
 
-    video_fname = args.output_file
-    cmd_video = ('ffmpeg' + ' -i {0} -pix_fmt yuv420p -qscale 0 {1}'.format(
-       tmp_video_file.name, video_fname)).split()
-    call(cmd_video)
-    audiovideo_fname = os.path.join(os.path.dirname(args.output_file), "audio_" + os.path.basename(args.output_file))
-    cmd_audio = f"ffmpeg -i {video_fname} -i {wav_path} -c:v copy -c:a aac {audiovideo_fname}".split()
+    cmd_audio = f"ffmpeg -i {tmp_video_file.name} -i {args.wav_path} -c:v copy -c:a aac {video_fname}".split()
     call(cmd_audio)
 
 def main():
     parser = argparse.ArgumentParser(description='FaceFormer: Speech-Driven 3D Facial Animation with Transformers')
-    parser.add_argument("--model_name", type=str, default="biwi")
-    parser.add_argument("--dataset", type=str, default="BIWI", help='vocaset or BIWI')
+    parser.add_argument("--model_name", type=str)
+    parser.add_argument("--model_step", type=str, default="latest")
+    parser.add_argument("--model_path", type=str, required=True, help='path of base pth path')
     parser.add_argument("--fps", type=float, default=25, help='frame rate - 30 for vocaset; 25 for BIWI')
     parser.add_argument("--feature_dim", type=int, default=128, help='64 for vocaset; 128 for BIWI')
     parser.add_argument("--period", type=int, default=25, help='period in PPE - 30 for vocaset; 25 for BIWI')
@@ -213,7 +206,6 @@ def main():
        " FaceTalk_170904_03276_TA FaceTalk_170912_03278_TA")
     parser.add_argument("--test_subjects", type=str, default="FaceTalk_170809_00138_TA"
        " FaceTalk_170731_00024_TA")
-    parser.add_argument("--output_file", type=str, default="demo/output/temp.mp4", help='path of the rendered video sequence')
     parser.add_argument("--wav_path", type=str, default="demo/wav/test.wav", help='path of the input audio signal')
     parser.add_argument("--result_path", type=str, default="demo/result", help='path of the predictions')
     parser.add_argument("--condition", type=str, default="M3", help='select a conditioning subject from train_subjects')
@@ -224,8 +216,6 @@ def main():
     parser.add_argument("--base_model_path", type=str, required=False, help='path of base model')
     parser.add_argument("--base_template", type=str, required=False, help='path of base model template')
     parser.add_argument("--model_template", type=str, required=False, help='path of model template to drive')
-    parser.add_argument("--model_path", type=str, required=True, help='path of base pth path')
-    parser.add_argument("--neg_penalty", type=float,required=False, default=1e-7, help='penalty for negative value in the base vector')
     parser.add_argument("--no_render", action='store_true', help='whether to render the video')
     parser.add_argument("--base_only", action='store_true', help='whether to save whole model or just base vector')
     parser.add_argument('--max_len', type=int, default=600, help='number of maximum frame num')

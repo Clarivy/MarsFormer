@@ -46,6 +46,8 @@ class BaseOptions():
             "Ada_OURuv_aligned "
         )
         self.parser.add_argument('--mix_config', type=str, default='data/config/mix_config.json', help='MixDataset configuration path')
+        self.parser.add_argument("--base_models_path", type=str, help='path of base models')
+        self.parser.add_argument("--pca_path", type=str, help='path of pca model')
 
         self.initialized = True
     

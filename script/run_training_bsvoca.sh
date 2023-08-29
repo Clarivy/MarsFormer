@@ -1,12 +1,13 @@
 set PYTHONPATH=/data/new_disk/pangbai/FaceFormer/FaceFormer/
 python train.py\
-    --name uscvoca \
-    --gpu_id 3 \
+    --name bsvoca_lr_1e-4_tf_vert \
+    --gpu_id 1 \
     --dataroot ./vocaset/ \
-    --dataset USCVocaDataset \
+    --dataset VocaBSDataset \
     --train_subjects "FaceTalk_170728_03272_TA FaceTalk_170904_00128_TA FaceTalk_170725_00137_TA FaceTalk_170915_00223_TA FaceTalk_170811_03274_TA FaceTalk_170913_03279_TA FaceTalk_170904_03276_TA FaceTalk_170912_03278_TA FaceTalk_170811_03275_TA FaceTalk_170908_03277_TA" \
+    --base_models_path /data/new_disk/new_disk/pangbai/FaceFormer/FaceFormer/data/USC56 \
     --lr 1e-4 \
-    --vertice_dim 28224 \
+    --vertice_dim 55 \
     --epoch_num 1000 \
     --max_len 600 \
     --teacher_forcing \

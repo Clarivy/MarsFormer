@@ -824,6 +824,7 @@ class MixDataset(NPFABaseDataset):
 
                     # Load vertices
                     vertices_data = torch.FloatTensor(np.load(vertices_dir)).flatten(1) / 100 # (frame_num, 14062 * 3)
+                    vertices_data = vertices_data[:,:28224]
                     # Skip every other frame if the fps is 60
                     if "60fps" in os.path.basename(vertices_dir):
                         vertices_data = vertices_data[::2] 
@@ -856,7 +857,7 @@ class MixVocaDataset(NPFABaseDataset):
         super().__init__(opt)
         opt.dataroot = opt.mix_dataroot
         opt.train_subjects = opt.mix_train_subjects
-        opt.vertice_dim=42186
+        # opt.vertice_dim=28224
         self.mixdataset = MixDataset(opt)
         opt.dataroot = opt.voca_dataroot
         opt.train_subjects = opt.voca_train_subjects
